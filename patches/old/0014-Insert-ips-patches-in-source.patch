@@ -1,0 +1,701 @@
+From f0181c1943c4cd483cea3e6cad82ba95770e93b1 Mon Sep 17 00:00:00 2001
+From: Pugemon <islavaivanov76@gmail.com>
+Date: Sat, 30 Mar 2024 13:14:59 +0300
+Subject: [PATCH] Insert ips patches in source
+
+---
+ fusee/program/source/fusee_stratosphere.cpp   | 212 ++++++++++++++++++
+ .../dns_mitm/dnsmitm_host_redirection.cpp     |   4 +-
+ .../loader/source/ldr_embedded_es_patches.inc | 139 ++++++++++++
+ .../source/ldr_embedded_nifm_patches.inc      | 139 ++++++++++++
+ .../source/ldr_embedded_nim_patches.inc       |  24 ++
+ stratosphere/loader/source/ldr_meta.cpp       |  32 ---
+ stratosphere/loader/source/ldr_patcher.cpp    |  37 ++-
+ 7 files changed, 552 insertions(+), 35 deletions(-)
+ create mode 100644 stratosphere/loader/source/ldr_embedded_es_patches.inc
+ create mode 100644 stratosphere/loader/source/ldr_embedded_nifm_patches.inc
+ create mode 100644 stratosphere/loader/source/ldr_embedded_nim_patches.inc
+
+diff --git a/fusee/program/source/fusee_stratosphere.cpp b/fusee/program/source/fusee_stratosphere.cpp
+index add639c05..c94292294 100644
+--- a/fusee/program/source/fusee_stratosphere.cpp
++++ b/fusee/program/source/fusee_stratosphere.cpp
+@@ -479,6 +479,216 @@ namespace ams::nxboot {
+             0xE0, 0x03, 0x1F, 0x2A, 0xC0, 0x03, 0x5F, 0xD6,
+         };
+ 
++        constexpr const u8 NoNcaHeaderSignatureCheckPatch0[] = {
++            0x1F, 0x20, 0x03, 0xD5,
++        };
++
++        constexpr const u8 NoNcaHeaderSignatureCheckPatch1[] = {
++            0xE0, 0x03, 0x1F, 0x2A,
++        };
++
++        void AddNoNcaHeaderSignatureCheckPatches(InitialProcessMeta *fs_meta, FsVersion fs_version) {
++            switch (fs_version) {
++                case FsVersion_1_0_0:
++                    AddPatch(fs_meta, 0x019568, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0195A0, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x031208, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x03A89C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_2_0_0:
++                case FsVersion_2_0_0_Exfat:
++                    AddPatch(fs_meta, 0x015E5C, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x015EF4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x032C30, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x03F820, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_2_1_0:
++                case FsVersion_2_1_0_Exfat:
++                    AddPatch(fs_meta, 0x015FCC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x016064, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x033008, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x03FBF8, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_3_0_0:
++                case FsVersion_3_0_0_Exfat:
++                    AddPatch(fs_meta, 0x018E8C, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x018F24, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0374BC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x049FC8, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_3_0_1:
++                case FsVersion_3_0_1_Exfat:
++                    AddPatch(fs_meta, 0x018EF8, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x018F90, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x037528, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x04A034, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_4_0_0:
++                case FsVersion_4_0_0_Exfat:
++                    AddPatch(fs_meta, 0x01C564, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x01C5FC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x01E1DC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x057A34, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_4_1_0:
++                case FsVersion_4_1_0_Exfat:
++                    AddPatch(fs_meta, 0x01C564, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x01C5FC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x01E1DC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x057A34, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_5_0_0:
++                case FsVersion_5_0_0_Exfat:
++                    AddPatch(fs_meta, 0x022E68, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x022EDC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0259C4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x07D590, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_5_1_0:
++                case FsVersion_5_1_0_Exfat:
++                    AddPatch(fs_meta, 0x022E98, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x022F0C, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0259F4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x07D960, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_6_0_0:
++                    AddPatch(fs_meta, 0x071334, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0713A8, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x081884, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0EB18C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_6_0_0_Exfat:
++                    AddPatch(fs_meta, 0x07CA34, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x07CAA8, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x081884, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0F688C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_7_0_0:
++                    AddPatch(fs_meta, 0x074AF4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x074B2C, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x07A968, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0F26E4, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_7_0_0_Exfat:
++                    AddPatch(fs_meta, 0x0800A4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0800DC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x085F18, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0FDC94, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_8_0_0:
++                    AddPatch(fs_meta, 0x0763D4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x07640C, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x07C4C8, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0F4AA4, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_8_1_0:
++                    AddPatch(fs_meta, 0x0763D4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x07640C, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x07C4C8, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0F4AA4, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_8_0_0_Exfat:
++                    AddPatch(fs_meta, 0x081984, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0819BC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x087A78, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x100054, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_8_1_0_Exfat:
++                    AddPatch(fs_meta, 0x081984, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0819BC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x087A78, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x100054, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_9_0_0:
++                case FsVersion_9_0_0_Exfat:
++                    AddPatch(fs_meta, 0x061F54, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x061F8C, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0679DC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0CA140, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_9_1_0:
++                case FsVersion_9_1_0_Exfat:
++                    AddPatch(fs_meta, 0x061F64, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x061F9C, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0679EC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0CA150, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_10_0_0:
++                case FsVersion_10_0_0_Exfat:
++                    AddPatch(fs_meta, 0x0774BC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0DC120, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_10_2_0:
++                case FsVersion_10_2_0_Exfat:
++                    AddPatch(fs_meta, 0x0774BC, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0DC580, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_11_0_0:
++                case FsVersion_11_0_0_Exfat:
++                    AddPatch(fs_meta, 0x079378, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0E3014, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_12_0_0:
++                case FsVersion_12_0_0_Exfat:
++                    AddPatch(fs_meta, 0x07A020, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0EBE28, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_12_0_3:
++                case FsVersion_12_0_3_Exfat:
++                    AddPatch(fs_meta, 0x07A130, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0EBF38, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                case FsVersion_13_0_0:
++                case FsVersion_13_0_0_Exfat:
++                    AddPatch(fs_meta, 0x07AFC8, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0EF420, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_13_1_0:
++                case FsVersion_13_1_0_Exfat:
++                    AddPatch(fs_meta, 0x07AFC8, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x0EF420, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_14_0_0:
++                    AddPatch(fs_meta, 0x079D00, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x1282CC, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_14_0_0_Exfat:
++                    AddPatch(fs_meta, 0x079D00, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x13364C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_15_0_0:
++                    AddPatch(fs_meta, 0x06ECA4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x120EEC, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_15_0_0_Exfat:
++                    AddPatch(fs_meta, 0x06ECA4, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x12BE7C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_16_0_0:
++                    AddPatch(fs_meta, 0x06F804, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x148C2C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_16_0_0_Exfat:
++                    AddPatch(fs_meta, 0x06F804, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x15390C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_16_0_3:
++                    AddPatch(fs_meta, 0x06F854, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x148C7C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_16_0_3_Exfat:
++                    AddPatch(fs_meta, 0x06F854, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    AddPatch(fs_meta, 0x15385C, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    break;
++                case FsVersion_17_0_0:
++                case FsVersion_17_0_0_Exfat:
++                    AddPatch(fs_meta, 0x024254, NoNcaHeaderSignatureCheckPatch0, sizeof(NoNcaHeaderSignatureCheckPatch0));
++                    AddPatch(fs_meta, 0x073C04, NoNcaHeaderSignatureCheckPatch1, sizeof(NoNcaHeaderSignatureCheckPatch1));
++                    break;
++                default:
++                    break;
++            }
++        }
++
+         void AddNogcPatches(InitialProcessMeta *fs_meta, FsVersion fs_version) {
+             switch (fs_version) {
+                 case FsVersion_1_0_0:
+@@ -823,6 +1033,8 @@ namespace ams::nxboot {
+                 AddNogcPatches(fs_meta, fs_version);
+             }
+ 
++            AddNoNcaHeaderSignatureCheckPatches(fs_meta, fs_version);
++
+             /* TODO ams.tma2: add mount_host patches. */
+         }
+ 
+diff --git a/stratosphere/ams_mitm/source/dns_mitm/dnsmitm_host_redirection.cpp b/stratosphere/ams_mitm/source/dns_mitm/dnsmitm_host_redirection.cpp
+index ea6f1eb09..cc37de024 100644
+--- a/stratosphere/ams_mitm/source/dns_mitm/dnsmitm_host_redirection.cpp
++++ b/stratosphere/ams_mitm/source/dns_mitm/dnsmitm_host_redirection.cpp
+@@ -65,8 +65,8 @@ namespace ams::mitm::socket::resolver {
+         }
+ 
+         constexpr const char DefaultHostsFile[] =
+-            "# Nintendo telemetry servers\n"
+-            "127.0.0.1 receive-%.dg.srv.nintendo.net receive-%.er.srv.nintendo.net\n";
++            "# All Nintendo servers\n"
++            "127.0.0.1 *nintendo*\n";
+ 
+         constinit os::SdkMutex g_redirection_lock;
+         std::vector<std::pair<std::string, ams::socket::InAddrT>> g_redirection_list;
+diff --git a/stratosphere/loader/source/ldr_embedded_es_patches.inc b/stratosphere/loader/source/ldr_embedded_es_patches.inc
+new file mode 100644
+index 000000000..91bdc4900
+--- /dev/null
++++ b/stratosphere/loader/source/ldr_embedded_es_patches.inc
+@@ -0,0 +1,139 @@
++/*
++ * Copyright (c) Atmosphère-NX
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++/* Patch fallback case to mov w0, #1 rather than retrieving settings flag. */
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_1_0_0[] = {
++    { 0x4884, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_2_3_0[] = {
++    { 0x4758, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_3_0_0[] = {
++    { 0x4710, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_3_0_2[] = {
++    { 0x4710, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_4_0_0[] = {
++    { 0x553C, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_5_0_0[] = {
++    { 0x5E94, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_5_1_0[] = {
++    { 0x5E94, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_6_0_0[] = {
++    { 0x4BCD4, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_6_1_0[] = {
++    { 0x4BCD4, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_7_0_0[] = {
++    { 0x4D5F4, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_8_0_1[] = {
++    { 0x4EDC4, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_8_1_0[] = {
++    { 0x4EDC4, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_9_0_0[] = {
++    { 0x2D2D4, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_10_0_0[] = {
++    { 0x2DB98, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_10_1_0[] = {
++    { 0x2DBAC, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_11_0_0[] = {
++    { 0x2CFCC, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_12_0_0[] = {
++    { 0x2E47C, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_12_1_0[] = {
++    { 0x2E51C, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_13_0_0[] = {
++    { 0x31428, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_13_1_0[] = {
++    { 0x31928, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_14_0_0[] = {
++    { 0x662D8, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_15_0_0[] = {
++    { 0x649EC, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_16_0_0[] = {
++    { 0x64A6C, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatchEntry DisableTicketVerificationPatches_17_0_0[] = {
++    { 0x6720C, "\xE0\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatch DisableTicketVerificationPatches[] = {
++    { ParseModuleId("F7271147BA178C4E9F6451C62B10E668E6F8DECC"), util::size(DisableTicketVerificationPatches_1_0_0), DisableTicketVerificationPatches_1_0_0 }, /* 1.0.0 */
++    { ParseModuleId("76935CA6235CA150D790D4DDF09CA3488AEF50D8"), util::size(DisableTicketVerificationPatches_2_3_0), DisableTicketVerificationPatches_2_3_0 }, /* 2.3.0 */
++    { ParseModuleId("F92CFF283777465AFBCC6E160C10EFE7AADC4D3C"), util::size(DisableTicketVerificationPatches_3_0_0), DisableTicketVerificationPatches_3_0_0 }, /* 3.0.0 */
++    { ParseModuleId("F86D615F9FC6F0D16C3458BE58C64594DBDAB0DF"), util::size(DisableTicketVerificationPatches_3_0_2), DisableTicketVerificationPatches_3_0_2 }, /* 3.0.2 */
++    { ParseModuleId("7135C20E752183914606CCE81293F24B738C3AEF"), util::size(DisableTicketVerificationPatches_4_0_0), DisableTicketVerificationPatches_4_0_0 }, /* 4.0.0-4.1.0 */
++    { ParseModuleId("A6E7D98BD335371E1B9A96F6241EA3E83B0C36F4"), util::size(DisableTicketVerificationPatches_5_0_0), DisableTicketVerificationPatches_5_0_0 }, /* 5.0.0-5.0.2 */
++    { ParseModuleId("C0BFC6518707AC975295A0B656A051DA885A9045"), util::size(DisableTicketVerificationPatches_5_1_0), DisableTicketVerificationPatches_5_1_0 }, /* 5.1.0 */
++    { ParseModuleId("CBF2D40A2210C4EE1137F80098DB776EAC7DDCC1"), util::size(DisableTicketVerificationPatches_6_0_0), DisableTicketVerificationPatches_6_0_0 }, /* 6.0.0-6.0.1 */
++    { ParseModuleId("9C1B205852731D054B070529D320AD9649E7796C"), util::size(DisableTicketVerificationPatches_6_1_0), DisableTicketVerificationPatches_6_1_0 }, /* 6.1.0-6.2.0 */
++    { ParseModuleId("D2D2430244D162C9FAABE8C89A58C6E3962160F1"), util::size(DisableTicketVerificationPatches_7_0_0), DisableTicketVerificationPatches_7_0_0 }, /* 7.0.0-7.0.1 */
++    { ParseModuleId("39E7884F7DDEA9BE4FF9F7187898FACC466A080A"), util::size(DisableTicketVerificationPatches_8_0_1), DisableTicketVerificationPatches_8_0_1 }, /* 8.0.1 */
++    { ParseModuleId("CF8FB4F82D3E2D56720E1EDB14AB06543343E042"), util::size(DisableTicketVerificationPatches_8_1_0), DisableTicketVerificationPatches_8_1_0 }, /* 8.1.0-8.1.1 */
++    { ParseModuleId("34E95FF2929B5B767DCFD41D108AD927D2D7F5DC"), util::size(DisableTicketVerificationPatches_9_0_0), DisableTicketVerificationPatches_9_0_0 }, /* 9.0.0-9.2.0 */
++    { ParseModuleId("03E4EB5556B98B327D1353E8AA2C7ADF2C544470"), util::size(DisableTicketVerificationPatches_10_0_0), DisableTicketVerificationPatches_10_0_0 }, /* 10.0.0-10.0.4 */
++    { ParseModuleId("5AA09E1AF740A91D0F73ADFAE81A63E8AC0610D2"), util::size(DisableTicketVerificationPatches_10_1_0), DisableTicketVerificationPatches_10_1_0 }, /* 10.1.0-10.2.0 */
++    { ParseModuleId("3B8BF56DBEC7225D2EE666B009C42C0DC4552010"), util::size(DisableTicketVerificationPatches_11_0_0), DisableTicketVerificationPatches_11_0_0 }, /* 11.0.0-11.0.1 */
++    { ParseModuleId("F48ABC3EF41A0555800127D172C9B8D2C653243A"), util::size(DisableTicketVerificationPatches_12_0_0), DisableTicketVerificationPatches_12_0_0 }, /* 12.0.0-12.0.3 */
++    { ParseModuleId("1114E9102F1EBCD1B0EAF19C927362CFCB8B5D2C"), util::size(DisableTicketVerificationPatches_12_1_0), DisableTicketVerificationPatches_12_1_0 }, /* 12.1.0 */
++    { ParseModuleId("D0ECC9483E636AE19FE3E314DB41CB18019977D7"), util::size(DisableTicketVerificationPatches_13_0_0), DisableTicketVerificationPatches_13_0_0 }, /* 13.0.0 */
++    { ParseModuleId("98BB737D9780E9FE3117981A77A09FF6756DBC2E"), util::size(DisableTicketVerificationPatches_13_1_0), DisableTicketVerificationPatches_13_1_0 }, /* 13.1.0-13.2.1 */
++    { ParseModuleId("621351EB04199CF0B7A899896C451F2FD1B7A1CE"), util::size(DisableTicketVerificationPatches_14_0_0), DisableTicketVerificationPatches_14_0_0 }, /* 14.0.0-14.1.2 */
++    { ParseModuleId("4FB9AFAED8A9093A3D88F6D61158B1C165F9444A"), util::size(DisableTicketVerificationPatches_15_0_0), DisableTicketVerificationPatches_15_0_0 }, /* 15.0.0-15.0.1 */
++    { ParseModuleId("127904316C924326084288641825FE5DC259AF6B"), util::size(DisableTicketVerificationPatches_16_0_0), DisableTicketVerificationPatches_16_0_0 }, /* 16.0.0-16.1.0 */
++    { ParseModuleId("02DCD930D0A7462451E9973AB2022D697C77614B"), util::size(DisableTicketVerificationPatches_17_0_0), DisableTicketVerificationPatches_17_0_0 }, /* 17.0.0-17.0.1 */
++};
+\ No newline at end of file
+diff --git a/stratosphere/loader/source/ldr_embedded_nifm_patches.inc b/stratosphere/loader/source/ldr_embedded_nifm_patches.inc
+new file mode 100644
+index 000000000..bb6002e25
+--- /dev/null
++++ b/stratosphere/loader/source/ldr_embedded_nifm_patches.inc
+@@ -0,0 +1,139 @@
++/*
++ * Copyright (c) Atmosphère-NX
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++/* Patch fallback case to mov w0, #1 rather than retrieving settings flag. */
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_1_0_0[] = {
++    { 0x304C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_2_0_0[] = {
++    { 0x33C4, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_2_1_0[] = {
++    { 0x3300, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_3_0_0[] = {
++    { 0x36B4, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_3_0_1[] = {
++    { 0x36B4, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_4_0_0[] = {
++    { 0x3698, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_5_0_0[] = {
++    { 0x2075C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_5_1_0[] = {
++    { 0x207EC, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_6_0_0[] = {
++    { 0x74B2C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_6_1_0[] = {
++    { 0x74B6C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_7_0_0[] = {
++    { 0x76C4C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_8_0_0[] = {
++    { 0x7854C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_9_0_0[] = {
++    { 0xE1EC, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_9_1_0[] = {
++    { 0xE1EC, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_10_0_0[] = {
++    { 0xF67C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_11_0_0[] = {
++    { 0xF32C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_12_0_0[] = {
++    { 0x106C8, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_12_1_0[] = {
++    { 0x106C8, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_13_0_0[] = {
++    { 0x10740, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_13_1_0[] = {
++    { 0x10740, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_14_0_0[] = {
++    { 0x44238, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_15_0_0[] = {
++    { 0x79E60, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_16_0_0[] = {
++    { 0x7A80C, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatchEntry ForceCommunicationEnabledPatches_17_0_0[] = {
++    { 0x809E0, "\x00\x30\x9A\xD2\x00\x1E\xA1\xF2\x61\x01\x00\xD4\xE0\x03\x1F\xAA\xC0\x03\x5F\xD6", 20 },
++};
++
++constexpr inline const EmbeddedPatch ForceCommunicationEnabledPatches[] = {
++    { ParseModuleId("D47D1506009B340829CD545B2A3F3AA7881FBADA"), util::size(ForceCommunicationEnabledPatches_1_0_0), ForceCommunicationEnabledPatches_1_0_0 }, /* 1.0.0 */
++    { ParseModuleId("E6BFDADD5C69E17D43B7C67E2B2EE8B2E50C8E1F"), util::size(ForceCommunicationEnabledPatches_2_0_0), ForceCommunicationEnabledPatches_2_0_0 }, /* 2.0.0 */
++    { ParseModuleId("AD32FB6D8F36668C586E538E32576A8D6A3931C0"), util::size(ForceCommunicationEnabledPatches_2_1_0), ForceCommunicationEnabledPatches_2_1_0 }, /* 2.1.0-2.3.0 */
++    { ParseModuleId("881206E6B5078EFC4E2C30D7B33E33AD266538C6"), util::size(ForceCommunicationEnabledPatches_3_0_0), ForceCommunicationEnabledPatches_3_0_0 }, /* 3.0.0 */
++    { ParseModuleId("5835E2DADB4DD570DD811ABF521FA91AC3C7B717"), util::size(ForceCommunicationEnabledPatches_3_0_1), ForceCommunicationEnabledPatches_3_0_1 }, /* 3.0.1-3.0.2 */
++    { ParseModuleId("38774C42DFCB8B9D7AA61550D6AF7D335472556C"), util::size(ForceCommunicationEnabledPatches_4_0_0), ForceCommunicationEnabledPatches_4_0_0 }, /* 4.0.0-4.1.0 */
++    { ParseModuleId("B6966381A806655B718F1BF11DB5FF836E3085F7"), util::size(ForceCommunicationEnabledPatches_5_0_0), ForceCommunicationEnabledPatches_5_0_0 }, /* 5.0.0-5.0.2 */
++    { ParseModuleId("D82361E0D66DC01AFA3B5116532E5E1ED569C578"), util::size(ForceCommunicationEnabledPatches_5_1_0), ForceCommunicationEnabledPatches_5_1_0 }, /* 5.1.0 */
++    { ParseModuleId("3AED90979B380C6415F975F5B784BEA2B4730E8C"), util::size(ForceCommunicationEnabledPatches_6_0_0), ForceCommunicationEnabledPatches_6_0_0 }, /* 6.0.0-6.0.1 */
++    { ParseModuleId("43F10952AE80CFADC39A0BF59EA4E552EF4A4528"), util::size(ForceCommunicationEnabledPatches_6_1_0), ForceCommunicationEnabledPatches_6_1_0 }, /* 6.1.0-6.2.0 */
++    { ParseModuleId("929014BFCFE462FD76B2BB3454FB304F63C73AC2"), util::size(ForceCommunicationEnabledPatches_7_0_0), ForceCommunicationEnabledPatches_7_0_0 }, /* 7.0.0-7.0.1 */
++    { ParseModuleId("FD53CB863709DFFEC19C0889F61D4C424AFFD4ED"), util::size(ForceCommunicationEnabledPatches_8_0_0), ForceCommunicationEnabledPatches_8_0_0 }, /* 8.0.0-8.1.0 */
++    { ParseModuleId("7DF07326B6B50CA37F19C1C44F9458406C536B30"), util::size(ForceCommunicationEnabledPatches_9_0_0), ForceCommunicationEnabledPatches_9_0_0 }, /* 9.0.0-9.0.1 */
++    { ParseModuleId("9C72C47F0310F7C9F487047D8EB42DBB96882088"), util::size(ForceCommunicationEnabledPatches_9_1_0), ForceCommunicationEnabledPatches_9_1_0 }, /* 9.1.0-9.2.0 */
++    { ParseModuleId("5DA461C7B6CAE6B88EDF4F914F7CBCF0943B10BB"), util::size(ForceCommunicationEnabledPatches_10_0_0), ForceCommunicationEnabledPatches_10_0_0 }, /* 10.0.0-10.2.0 */
++    { ParseModuleId("7A43F840337C28D453718843608EEFF78AFD460B"), util::size(ForceCommunicationEnabledPatches_11_0_0), ForceCommunicationEnabledPatches_11_0_0 }, /* 11.0.0-11.0.1 */
++    { ParseModuleId("A85F50FBA10E06A3EBA3D3FACB9E075B218C7D6D"), util::size(ForceCommunicationEnabledPatches_12_0_0), ForceCommunicationEnabledPatches_12_0_0 }, /* 12.0.0-12.0.3 */
++    { ParseModuleId("69E25CDEEED5C6520AC2AC8E5EAE01CD8FC46E40"), util::size(ForceCommunicationEnabledPatches_12_1_0), ForceCommunicationEnabledPatches_12_1_0 }, /* 12.1.0 */
++    { ParseModuleId("8CB532EA199207191F04CE3DDECEC854C7CF07D6"), util::size(ForceCommunicationEnabledPatches_13_0_0), ForceCommunicationEnabledPatches_13_0_0 }, /* 13.0.0 */
++    { ParseModuleId("6F02D68B1DCD2AFFBAED14B5933F81F3C327E537"), util::size(ForceCommunicationEnabledPatches_13_1_0), ForceCommunicationEnabledPatches_13_1_0 }, /* 13.1.0-13.2.1 */
++    { ParseModuleId("BA91B5A61E423F51FB83B2C9E6C153CC5AE27DCB"), util::size(ForceCommunicationEnabledPatches_14_0_0), ForceCommunicationEnabledPatches_14_0_0 }, /* 14.0.0-14.1.2 */
++    { ParseModuleId("A188828ADF447425D97901462EBF732D2E29BC4E"), util::size(ForceCommunicationEnabledPatches_15_0_0), ForceCommunicationEnabledPatches_15_0_0 }, /* 15.0.0-15.0.1 */
++    { ParseModuleId("A2C3AEE4E5A954908BEBAEDEA2010095E9E521B2"), util::size(ForceCommunicationEnabledPatches_16_0_0), ForceCommunicationEnabledPatches_16_0_0 }, /* 16.0.0-16.1.0 */
++    { ParseModuleId("440F71259BCA1E97EA3663CBD6EC9315951F9E96"), util::size(ForceCommunicationEnabledPatches_17_0_0), ForceCommunicationEnabledPatches_17_0_0 }, /* 17.0.0-17.0.1 */
++};
+\ No newline at end of file
+diff --git a/stratosphere/loader/source/ldr_embedded_nim_patches.inc b/stratosphere/loader/source/ldr_embedded_nim_patches.inc
+new file mode 100644
+index 000000000..206e579be
+--- /dev/null
++++ b/stratosphere/loader/source/ldr_embedded_nim_patches.inc
+@@ -0,0 +1,24 @@
++/*
++ * Copyright (c) Atmosphère-NX
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++
++/* Patch fallback case to mov w0, #1 rather than retrieving settings flag. */
++constexpr inline const EmbeddedPatchEntry AmsProdinfoBlankerFix_17_0_0[] = {
++    { 0x1334A8, "\xE2\x03\x1F\xAA", 4 },
++};
++
++constexpr inline const EmbeddedPatch AmsProdinfoBlankerFix[] = {
++    { ParseModuleId("C14BC0AD5027F6B6B49A5A6B2D52D5E8306EE1D2"), util::size(AmsProdinfoBlankerFix_17_0_0), AmsProdinfoBlankerFix_17_0_0 }, /* 17.0.0-17.0.1 */
++};
+\ No newline at end of file
+diff --git a/stratosphere/loader/source/ldr_meta.cpp b/stratosphere/loader/source/ldr_meta.cpp
+index 8d1e5c31a..2b2810346 100644
+--- a/stratosphere/loader/source/ldr_meta.cpp
++++ b/stratosphere/loader/source/ldr_meta.cpp
+@@ -116,33 +116,6 @@ namespace ams::ldr {
+             R_SUCCEED();
+         }
+ 
+-        const u8 *GetAcidSignatureModulus(u32 key_generation) {
+-            return fssystem::GetAcidSignatureKeyModulus(!IsDevelopmentForAcidSignatureCheck(), key_generation);
+-        }
+-
+-        Result ValidateAcidSignature(Meta *meta) {
+-            /* Loader did not check signatures prior to 10.0.0. */
+-            if (hos::GetVersion() < hos::Version_10_0_0) {
+-                meta->check_verification_data = false;
+-                R_SUCCEED();
+-            }
+-
+-            /* Verify the signature. */
+-            const u8 *sig         = meta->acid->signature;
+-            const size_t sig_size = sizeof(meta->acid->signature);
+-            const u8 *mod         = GetAcidSignatureModulus(meta->npdm->signature_key_generation);
+-            const size_t mod_size = fssystem::AcidSignatureKeyModulusSize;
+-            const u8 *exp         = fssystem::GetAcidSignatureKeyPublicExponent();
+-            const size_t exp_size = fssystem::AcidSignatureKeyPublicExponentSize;
+-            const u8 *msg         = meta->acid->modulus;
+-            const size_t msg_size = meta->acid->size;
+-            const bool is_signature_valid = crypto::VerifyRsa2048PssSha256(sig, sig_size, mod, mod_size, exp, exp_size, msg, msg_size);
+-            R_UNLESS(is_signature_valid || !IsEnabledProgramVerification(), ldr::ResultInvalidAcidSignature());
+-
+-            meta->check_verification_data = is_signature_valid;
+-            R_SUCCEED();
+-        }
+-
+         Result LoadMetaFromFile(fs::FileHandle file, MetaCache *cache) {
+             /* Reset cache. */
+             cache->meta = {};
+@@ -185,8 +158,6 @@ namespace ams::ldr {
+                 meta->aci_fah = reinterpret_cast<u8 *>(aci) + aci->fah_offset;
+                 meta->aci_sac = reinterpret_cast<u8 *>(aci) + aci->sac_offset;
+                 meta->aci_kac = reinterpret_cast<u8 *>(aci) + aci->kac_offset;
+-
+-                meta->modulus   = acid->modulus;
+             }
+ 
+             R_SUCCEED();
+@@ -261,9 +232,6 @@ namespace ams::ldr {
+                 R_TRY(fs::OpenFile(std::addressof(file), BaseMetaPath, fs::OpenMode_Read));
+                 ON_SCOPE_EXIT { fs::CloseFile(file); };
+                 R_TRY(LoadMetaFromFile(file, std::addressof(g_original_meta_cache)));
+-                R_TRY(ValidateAcidSignature(std::addressof(g_original_meta_cache.meta)));
+-                meta->modulus                 = g_original_meta_cache.meta.modulus;
+-                meta->check_verification_data = g_original_meta_cache.meta.check_verification_data;
+             }
+         }
+ 
+diff --git a/stratosphere/loader/source/ldr_patcher.cpp b/stratosphere/loader/source/ldr_patcher.cpp
+index a014067c6..9671e1cd2 100644
+--- a/stratosphere/loader/source/ldr_patcher.cpp
++++ b/stratosphere/loader/source/ldr_patcher.cpp
+@@ -107,6 +107,9 @@ namespace ams::ldr {
+             const EmbeddedPatchEntry *entries;
+         };
+ 
++        #include "ldr_embedded_es_patches.inc"
++        #include "ldr_embedded_nifm_patches.inc"
++        #include "ldr_embedded_nim_patches.inc"
+         #include "ldr_embedded_usb_patches.inc"
+ 
+     }
+@@ -140,6 +143,38 @@ namespace ams::ldr {
+                 }
+             }
+         }
+-    }
+ 
++        for (const auto &patch : DisableTicketVerificationPatches) {
++            if (std::memcmp(std::addressof(patch.module_id), std::addressof(module_id), sizeof(module_id)) == 0) {
++                for (size_t i = 0; i < patch.num_entries; ++i) {
++                    const auto &entry = patch.entries[i];
++                    if (entry.offset + entry.size <= mapped_size) {
++                        std::memcpy(reinterpret_cast<void *>(mapped_nso + entry.offset), entry.data, entry.size);
++                    }
++                }
++            }
++        }
++
++        for (const auto &patch : ForceCommunicationEnabledPatches) {
++            if (std::memcmp(std::addressof(patch.module_id), std::addressof(module_id), sizeof(module_id)) == 0) {
++                for (size_t i = 0; i < patch.num_entries; ++i) {
++                    const auto &entry = patch.entries[i];
++                    if (entry.offset + entry.size <= mapped_size) {
++                        std::memcpy(reinterpret_cast<void *>(mapped_nso + entry.offset), entry.data, entry.size);
++                    }
++                }
++            }
++        }
++
++        for (const auto &patch : AmsProdinfoBlankerFix) {
++            if (std::memcmp(std::addressof(patch.module_id), std::addressof(module_id), sizeof(module_id)) == 0) {
++                for (size_t i = 0; i < patch.num_entries; ++i) {
++                    const auto &entry = patch.entries[i];
++                    if (entry.offset + entry.size <= mapped_size) {
++                        std::memcpy(reinterpret_cast<void *>(mapped_nso + entry.offset), entry.data, entry.size);
++                    }
++                }
++            }
++        }
++    }
+ }
+\ No newline at end of file
+-- 
+2.39.1.windows.1
+
