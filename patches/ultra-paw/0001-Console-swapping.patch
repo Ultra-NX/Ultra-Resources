@@ -1,0 +1,104 @@
+From 5fdf22bf38deb2ab871dabb40060e1dbe4c89433 Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Mon, 15 Apr 2024 13:35:58 +0300
+Subject: [PATCH] Console swapping
+
+---
+ source/main.cpp  | 12 ++++++------
+ source/utils.hpp | 12 ++++++------
+ 2 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/source/main.cpp b/source/main.cpp
+index 9dcf49b..c24bab6 100644
+--- a/source/main.cpp
++++ b/source/main.cpp
+@@ -1201,11 +1201,11 @@ public:
+             
+             commandName = cmd[0];
+             
+-            if (commandName == "erista:" || commandName == "Erista:") {
++            if (commandName == "mariko:" || commandName == "Mariko:") {
+                 inEristaSection = true;
+                 inMarikoSection = false;
+                 continue;
+-            } else if (commandName == "mariko:" || commandName == "Mariko:") {
++            } else if (commandName == "erista:" || commandName == "Erista:") {
+                 inEristaSection = false;
+                 inMarikoSection = true;
+                 continue;
+@@ -1806,11 +1806,11 @@ public:
+                     
+                     commandName = cmd[0];
+                     
+-                    if (commandName == "erista:" || commandName == "Erista:") {
++                    if (commandName == "mariko:" || commandName == "Mariko:") {
+                         inEristaSection = true;
+                         inMarikoSection = false;
+                         continue;
+-                    } else if (commandName == "mariko:" || commandName == "Mariko:") {
++                    } else if (commandName == "erista:" || commandName == "Erista:") {
+                         inEristaSection = false;
+                         inMarikoSection = true;
+                         continue;
+@@ -2854,11 +2854,11 @@ public:
+                         
+                         commandName = cmd[0];
+                         
+-                        if (commandName == "erista:" || commandName == "Erista:") {
++                        if (commandName == "mariko:" || commandName == "Mariko:") {
+                             inEristaSection = true;
+                             inMarikoSection = false;
+                             continue;
+-                        } else if (commandName == "mariko:" || commandName == "Mariko:") {
++                        } else if (commandName == "erista:" || commandName == "Erista:") {
+                             inEristaSection = false;
+                             inMarikoSection = true;
+                             continue;
+diff --git a/source/utils.hpp b/source/utils.hpp
+index aff4846..c3f5831 100644
+--- a/source/utils.hpp
++++ b/source/utils.hpp
+@@ -643,10 +643,10 @@ std::vector<std::pair<std::string, std::vector<std::vector<std::string>>>> loadO
+         
+         if (trimmedLine.empty() || trimmedLine[0] == '#') {
+             continue; // Skip empty lines and comment lines
+-        } else if (trimmedLine == ";mariko") {
++        } else if (trimmedLine == ";erista") {
+             skipCommand = (!isMariko);
+             continue;
+-        } else if (trimmedLine == ";erista") {
++        } else if (trimmedLine == ";mariko") {
+             skipCommand = (isMariko);
+             continue;
+         } else if (trimmedLine[0] == '[' && trimmedLine.back() == ']') {
+@@ -830,11 +830,11 @@ std::vector<std::vector<std::string>> getSourceReplacement(const std::vector<std
+         if (commandName == "download")
+             isDownloadCommand = true;
+ 
+-        if (commandName == "erista:" || commandName == "Erista:") {
++        if (commandName == "mariko:" || commandName == "Mariko:") {
+             inEristaSection = true;
+             inMarikoSection = false;
+             continue;
+-        } else if (commandName == "mariko:" || commandName == "Mariko:") {
++        } else if (commandName == "erista:" || commandName == "Erista:") {
+             inEristaSection = false;
+             inMarikoSection = true;
+             continue;
+@@ -982,11 +982,11 @@ void interpretAndExecuteCommand(const std::vector<std::vector<std::string>>& com
+             if (logging)
+                 logMessage("Try #"+std::to_string(tryCounter));
+             continue;
+-        } else if (commandName == "erista:" || commandName == "Erista:") {
++        } else if (commandName == "mariko:" || commandName == "Mariko:") {
+             inEristaSection = true;
+             inMarikoSection = false;
+             continue;
+-        } else if (commandName == "mariko:" || commandName == "Mariko:") {
++        } else if (commandName == "erista:" || commandName == "Erista:") {
+             inEristaSection = false;
+             inMarikoSection = true;
+             continue;
+-- 
+2.42.0
+
