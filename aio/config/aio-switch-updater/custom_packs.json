@@ -1,6 +1,7 @@
 {
   "ams": {
-    "[PACK] Ultra-NX": "https://github.com/Ultra-NX/Ultra/releases/latest/download/Ultra.zip"
+    "[PACK] Ultra 2.1 Stable Release 1 - HOS 18.0.1": "https://github.com/Ultra-NX/Ultra/releases/latest/download/Ultra.zip",
+    "[PACK] Ultra 2.2 Release Candidate 1 - HOS 18.1.0": "https://github.com/Ultra-NX/Ultra-Resources/releases/download/Test/Ultra.zip"
   },
   "misc": {
     "Brick Code": "https://github.com/Ultra-NX/Ultra-Resources/releases/download/Test/brick.zip",
