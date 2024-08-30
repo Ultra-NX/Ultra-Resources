@@ -1,0 +1,27 @@
+From 2825ba09c8884c1ee508effeff1bb2d3efc5b89b Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Thu, 29 Aug 2024 11:37:05 +0300
+Subject: [PATCH] Swaps Mariko and Erista
+
+---
+ source/utils.hpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/source/utils.hpp b/source/utils.hpp
+index 7c2470d..2c6b80e 100644
+--- a/source/utils.hpp
++++ b/source/utils.hpp
+@@ -41,8 +41,8 @@ bool refreshPage = false;
+ bool refreshPackage = false;
+ bool interpreterLogging = false;
+ 
+-bool usingErista = util::IsErista();
+-bool usingMariko = util::IsMariko();
++bool usingErista = util::IsMariko();
++bool usingMariko = util::IsErista();
+ 
+ /**
+  * @brief Ultrahand-Overlay Configuration Paths
+-- 
+2.42.0
+
