@@ -1,0 +1,25 @@
+From 4da8467671a11fe322f4432b8afaa721007cbddc Mon Sep 17 00:00:00 2001
+From: Pugemon <islavaivanov76@gmail.com>
+Date: Sat, 30 Mar 2024 12:48:01 +0300
+Subject: [PATCH] Set project name and version in system settings
+
+---
+ stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp b/stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp
+index e0ceb6a19..a6ff175a7 100644
+--- a/stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp
++++ b/stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp
+@@ -67,7 +67,7 @@ namespace ams::mitm::settings {
+                 /* No truncation occurs assuming two-digits for all version number components. */
+                 char display_version[sizeof(g_ams_firmware_version.display_version)];
+ 
+-                util::SNPrintf(display_version, sizeof(display_version), "%s|AMS %u.%u.%u|%c", g_ams_firmware_version.display_version, api_info.GetMajorVersion(), api_info.GetMinorVersion(), api_info.GetMicroVersion(), emummc_char);
++                util::SNPrintf(display_version, sizeof(display_version), "%s|AMS %u.%u.%u|Ultra 2.1|%c", g_ams_firmware_version.display_version, api_info.GetMajorVersion(), api_info.GetMinorVersion(), api_info.GetMicroVersion(), emummc_char);
+ 
+                 std::memcpy(g_ams_firmware_version.display_version, display_version, sizeof(display_version));
+             }
+-- 
+2.39.1.windows.1
+

@@ -1,0 +1,28 @@
+From 0630f9a82f01e59c7fce44c6030d7532dc0f667f Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Sun, 27 Oct 2024 18:22:03 +0300
+Subject: [PATCH] Fixed cheats with fixed forwarders
+
+---
+ stratosphere/dmnt/dmnt.json | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/stratosphere/dmnt/dmnt.json b/stratosphere/dmnt/dmnt.json
+index ecd42b1ab..08fcaeff2 100644
+--- a/stratosphere/dmnt/dmnt.json
++++ b/stratosphere/dmnt/dmnt.json
+@@ -120,5 +120,10 @@
+ 		}, {
+ 			"type":	"handle_table_size",
+ 			"value":	0
++		}, {
++            "type": "debug_flags",
++            "value": {
++                "force_debug": true
++			}
+ 		}]
+ }
+\ No newline at end of file
+-- 
+2.47.0.windows.1
+
