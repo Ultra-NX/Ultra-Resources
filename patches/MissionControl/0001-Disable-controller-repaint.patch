@@ -1,0 +1,54 @@
+From 60db1e6d3a3ebdaa7265db6f3a4e75e6a91d085a Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Thu, 17 Oct 2024 01:35:45 +0300
+Subject: [PATCH] Disable controller repaint
+
+---
+ mc_mitm/source/controllers/emulated_switch_controller.cpp | 4 ++--
+ mc_mitm/source/controllers/switch_controller.cpp          | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/mc_mitm/source/controllers/emulated_switch_controller.cpp b/mc_mitm/source/controllers/emulated_switch_controller.cpp
+index 08d6696..da3e5e8 100644
+--- a/mc_mitm/source/controllers/emulated_switch_controller.cpp
++++ b/mc_mitm/source/controllers/emulated_switch_controller.cpp
+@@ -293,12 +293,12 @@ namespace ams::controller {
+ 
+         R_TRY(m_virtual_memory.Read(read_addr, response.data.serial_flash_read.data, read_size));
+ 
+-        if (read_addr == 0x6050) {
++        /*if (read_addr == 0x6050) {
+             if (ams::mitm::GetSystemLanguage() == 10) {
+                 u8 data[] = {0xff, 0xd7, 0x00, 0x00, 0x57, 0xb7, 0x00, 0x57, 0xb7, 0x00, 0x57, 0xb7};
+                 std::memcpy(response.data.serial_flash_read.data, data, sizeof(data));
+             }
+-        }
++        }*/
+ 
+         return this->FakeHidCommandResponse(&response);
+     }
+diff --git a/mc_mitm/source/controllers/switch_controller.cpp b/mc_mitm/source/controllers/switch_controller.cpp
+index 8820339..991b45d 100644
+--- a/mc_mitm/source/controllers/switch_controller.cpp
++++ b/mc_mitm/source/controllers/switch_controller.cpp
+@@ -89,7 +89,7 @@ namespace ams::controller {
+         this->UpdateControllerState(report);
+ 
+         auto input_report = reinterpret_cast<SwitchInputReport *>(m_input_report.data);
+-        if (input_report->id == 0x21) {
++        /*if (input_report->id == 0x21) {
+             if (input_report->type0x21.hid_command_response.id == HidCommand_SerialFlashRead) {
+                 if (input_report->type0x21.hid_command_response.data.serial_flash_read.address == 0x6050) {
+                     if (ams::mitm::GetSystemLanguage() == 10) {
+@@ -98,7 +98,7 @@ namespace ams::controller {
+                     }
+                 }
+             }
+-        }
++        }*/
+ 
+         this->ApplyButtonCombos(&input_report->buttons); 
+ 
+-- 
+2.47.0.windows.1
+

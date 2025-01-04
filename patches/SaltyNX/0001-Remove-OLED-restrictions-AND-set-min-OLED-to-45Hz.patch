@@ -1,0 +1,72 @@
+From 17efc4d4cd8c36cab24b4756a36c6a5db7023055 Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Sat, 4 Jan 2025 13:43:51 +0300
+Subject: [PATCH] Remove OLED restrictions AND set min OLED to 45Hz
+
+---
+ saltysd_proc/source/main.c | 20 +++++++-------------
+ 1 file changed, 7 insertions(+), 13 deletions(-)
+
+diff --git a/saltysd_proc/source/main.c b/saltysd_proc/source/main.c
+index 359c960..667e516 100644
+--- a/saltysd_proc/source/main.c
++++ b/saltysd_proc/source/main.c
+@@ -70,6 +70,8 @@ size_t reservedSharedMemory = 0;
+ uint64_t clkVirtAddr = 0;
+ bool displaySync = false;
+ uint8_t refreshRate = 0;
++uint8_t minHz = 40;
++uint8_t maxHz = 60;
+ s64 lastAppPID = -1;
+ bool isOLED = false;
+ bool isLite = false;
+@@ -147,13 +149,6 @@ uint8_t DockedModeRefreshRateAllowedValues[] = { 40,
+ 
+ static_assert(sizeof(DockedModeRefreshRateAllowedValues) == sizeof(DockedModeRefreshRateAllowed));
+ 
+-struct MinMax {
+-    u8 min;
+-    u8 max;
+-};
+-
+-struct MinMax HandheldModeRefreshRateAllowed = {40, 60};
+-
+ struct PLLD_BASE {
+     unsigned int PLLD_DIVM: 8;
+     unsigned int reserved_1: 3;
+@@ -346,10 +341,10 @@ bool SetDisplayRefreshRate(uint32_t new_refreshRate) {
+     }
+     //We are in handheld mode
+     
+-    if (new_refreshRate > HandheldModeRefreshRateAllowed.max) {
+-        new_refreshRate = HandheldModeRefreshRateAllowed.max;
++    if (new_refreshRate > maxHz) {
++        new_refreshRate = maxHz;
+     }
+-    else if (new_refreshRate < HandheldModeRefreshRateAllowed.min) {
++    else if (new_refreshRate < minHz) {
+         bool skip = false;
+         for (size_t i = 2; i <= 4; i++) {
+             if (new_refreshRate * i == 60) {
+@@ -359,7 +354,7 @@ bool SetDisplayRefreshRate(uint32_t new_refreshRate) {
+             }
+         }
+         if (!skip) for (size_t i = 2; i <= 4; i++) {
+-            if (((new_refreshRate * i) >= HandheldModeRefreshRateAllowed.min) && ((new_refreshRate * i) <= HandheldModeRefreshRateAllowed.max)) {
++            if (((new_refreshRate * i) >= minHz) && ((new_refreshRate * i) <= maxHz)) {
+                 skip = true;
+                 new_refreshRate *= i;
+                 break;
+@@ -1292,8 +1287,7 @@ int main(int argc, char *argv[])
+     SetSysProductModel model;
+     if (R_SUCCEEDED(setsysGetProductModel(&model))) {
+         if (model == SetSysProductModel_Aula) {
+-            SaltySD_printf("SaltySD: Detected OLED model. Display Sync is not available in handheld mode.\n");
+-            isOLED = true;
++            minHz = 45;
+         }
+         else if (model == SetSysProductModel_Hoag) {
+             isLite = true;
+-- 
+2.47.1.windows.1
+

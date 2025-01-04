@@ -1,0 +1,31 @@
+From bffe03bad243a1e2eb67020a7aa1102ffcd1b02f Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Fri, 15 Nov 2024 03:28:53 +0300
+Subject: [PATCH] Remove OLED restrictions
+
+---
+ saltysd_proc/source/main.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/saltysd_proc/source/main.c b/saltysd_proc/source/main.c
+index 32fe8ce..6d3f604 100644
+--- a/saltysd_proc/source/main.c
++++ b/saltysd_proc/source/main.c
+@@ -983,12 +983,12 @@ int main(int argc, char *argv[])
+     setsysInitialize();
+     SetSysProductModel model;
+     if (R_SUCCEEDED(setsysGetProductModel(&model))) {
+-        if (model == SetSysProductModel_Aula) {
++        if /*(model == SetSysProductModel_Aula) {
+             SaltySD_printf("SaltySD: Detected OLED model. Display Sync is not available.\n");
+             isOLED = true;
+             remove("sdmc:/SaltySD/flags/displaysync.flag");
+         }
+-        else if (model == SetSysProductModel_Nx) {
++        else if */(model == SetSysProductModel_Nx) {
+             isErista = true;
+         }
+     }
+-- 
+2.47.0.windows.1
+

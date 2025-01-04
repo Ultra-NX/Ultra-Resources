@@ -1,0 +1,32 @@
+From 26afb2f2fad4d8cf4dc79b265c3b7a412b99ad73 Mon Sep 17 00:00:00 2001
+From: Pugemon <islavaivanov76@gmail.com>
+Date: Sat, 30 Mar 2024 23:57:18 +0300
+Subject: [PATCH] Set project name and version
+
+---
+ stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp b/stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp
+index e0ceb6a19..4538caffa 100644
+--- a/stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp
++++ b/stratosphere/ams_mitm/source/set_mitm/setsys_mitm_service.cpp
+@@ -60,14 +60,13 @@ namespace ams::mitm::settings {
+ 
+             /* Modify the atmosphere firmware version to display a custom version string. */
+             {
+-                const auto api_info = exosphere::GetApiInfo();
+                 const char emummc_char = emummc::IsActive() ? 'E' : 'S';
+ 
+                 /* NOTE: We have carefully accounted for the size of the string we print. */
+                 /* No truncation occurs assuming two-digits for all version number components. */
+                 char display_version[sizeof(g_ams_firmware_version.display_version)];
+ 
+-                util::SNPrintf(display_version, sizeof(display_version), "%s|AMS %u.%u.%u|%c", g_ams_firmware_version.display_version, api_info.GetMajorVersion(), api_info.GetMinorVersion(), api_info.GetMicroVersion(), emummc_char);
++                util::SNPrintf(display_version, sizeof(display_version), "%s|Ultra 2.1|A1|%c", g_ams_firmware_version.display_version, emummc_char);
+ 
+                 std::memcpy(g_ams_firmware_version.display_version, display_version, sizeof(display_version));
+             }
+-- 
+2.39.1.windows.1
+
