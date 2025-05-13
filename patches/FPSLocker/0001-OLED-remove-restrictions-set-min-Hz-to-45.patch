@@ -1,0 +1,80 @@
+From 1853cd7cce4bb5a63613c7c960a0b98e0722fecd Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Tue, 13 May 2025 03:31:09 +0300
+Subject: [PATCH] OLED - remove restrictions & set min Hz to 45
+
+---
+ Makefile                 | 2 +-
+ source/Modes/Display.hpp | 6 +++---
+ source/main.cpp          | 4 ++--
+ 3 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 79c3a7f..d8846b1 100644
+--- a/Makefile
++++ b/Makefile
+@@ -38,7 +38,7 @@ include $(DEVKITPRO)/libnx/switch_rules
+ #   NACP building is skipped as well.
+ #---------------------------------------------------------------------------------
+ APP_TITLE	:=	FPSLocker
+-APP_VERSION	:=	2.1.1+
++APP_VERSION	:=	2.1.1U
+ 
+ TARGET		:=	FPSLocker
+ BUILD		:=	build
+diff --git a/source/Modes/Display.hpp b/source/Modes/Display.hpp
+index 77d06f0..64f8922 100644
+--- a/source/Modes/Display.hpp
++++ b/source/Modes/Display.hpp
+@@ -587,7 +587,7 @@ public:
+ 				auto *clickableListItem = new tsl::elm::ListItem2("Increase Refresh Rate");
+ 				clickableListItem->setClickListener([this](u64 keys) { 
+ 					if ((keys & HidNpadButton_A) && (!isOLED || isDocked)) {
+-						if ((refreshRate_g >= 40) && (refreshRate_g < 60)) {
++						if ((refreshRate_g >= minHz) && (refreshRate_g < 60)) {
+ 							if (R_SUCCEEDED(SaltySD_Connect())) {
+ 								refreshRate_g += 5;
+ 								SaltySD_SetDisplayRefreshRate(refreshRate_g);
+@@ -605,7 +605,7 @@ public:
+ 				auto *clickableListItem2 = new tsl::elm::ListItem2("Decrease Refresh Rate");
+ 				clickableListItem2->setClickListener([this](u64 keys) { 
+ 					if ((keys & HidNpadButton_A) && (!isOLED || isDocked)) {
+-						if (refreshRate_g > 40) {
++						if (refreshRate_g > minHz) {
+ 							if (R_SUCCEEDED(SaltySD_Connect())) {
+ 								refreshRate_g -= 5;
+ 								SaltySD_SetDisplayRefreshRate(refreshRate_g);
+@@ -645,7 +645,7 @@ public:
+ 							u64 PID = 0;
+ 							Result rc = pmdmntGetApplicationProcessId(&PID);
+ 							if (R_SUCCEEDED(rc) && Shared) {
+-								if (!displaySync == true && (Shared -> FPSlocked) < 40) {
++								if (!displaySync == true && (Shared -> FPSlocked) < minHz) {
+ 									SaltySD_SetDisplayRefreshRate(60);
+ 									(Shared -> displaySync) = 0;
+ 								}
+diff --git a/source/main.cpp b/source/main.cpp
+index bcf21bd..56aecdf 100644
+--- a/source/main.cpp
++++ b/source/main.cpp
+@@ -14,6 +14,7 @@ bool displaySync = false;
+ bool isOLED = false;
+ bool isLite = false;
+ uint8_t refreshRate_g = 60;
++uint8_t minHz = 40;
+ bool oldSalty = false;
+ 
+ #include "Modes/Advanced.hpp"
+@@ -778,8 +779,7 @@ public:
+ 			SetSysProductModel model;
+ 			if (R_SUCCEEDED(setsysGetProductModel(&model))) {
+ 				if (model == SetSysProductModel_Aula) {
+-					isOLED = true;
+-					remove("sdmc:/SaltySD/flags/displaysync.flag");
++					minHz = 45;
+ 				}
+ 				else if (model == SetSysProductModel_Hoag) {
+ 					isLite = true;
+-- 
+2.47.1.windows.1
+

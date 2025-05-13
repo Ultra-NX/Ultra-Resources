@@ -1,0 +1,55 @@
+From 7f0242dc1ac524d2c9bc8ed235d237b0a37d7394 Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Sat, 10 May 2025 03:17:52 +0300
+Subject: [PATCH] Fix old forwarders
+
+---
+ stratosphere/dmnt/dmnt.json             | 5 +++++
+ stratosphere/loader/source/ldr_meta.cpp | 8 ++++----
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/stratosphere/dmnt/dmnt.json b/stratosphere/dmnt/dmnt.json
+index ecd42b1ab..08fcaeff2 100644
+--- a/stratosphere/dmnt/dmnt.json
++++ b/stratosphere/dmnt/dmnt.json
+@@ -120,5 +120,10 @@
+ 		}, {
+ 			"type":	"handle_table_size",
+ 			"value":	0
++		}, {
++            "type": "debug_flags",
++            "value": {
++                "force_debug": true
++			}
+ 		}]
+ }
+\ No newline at end of file
+diff --git a/stratosphere/loader/source/ldr_meta.cpp b/stratosphere/loader/source/ldr_meta.cpp
+index 04e71d38b..0b3d83405 100644
+--- a/stratosphere/loader/source/ldr_meta.cpp
++++ b/stratosphere/loader/source/ldr_meta.cpp
+@@ -253,9 +253,6 @@ namespace ams::ldr {
+                 }
+             }
+ 
+-            /* Fix the debug capabilities, to prevent needing a hbl recompilation. */
+-            FixDebugCapabilityForHbl(static_cast<util::BitPack32 *>(meta->acid_kac), meta->acid->kac_size / sizeof(util::BitPack32));
+-            FixDebugCapabilityForHbl(static_cast<util::BitPack32 *>(meta->aci_kac),  meta->aci->kac_size  / sizeof(util::BitPack32));
+         } else if (hos::GetVersion() >= hos::Version_10_0_0) {
+             /* If storage id is none, there is no base code filesystem, and thus it is impossible for us to validate. */
+             /* However, if we're an application, we are guaranteed a base code filesystem. */
+@@ -268,7 +265,10 @@ namespace ams::ldr {
+                 meta->check_verification_data = g_original_meta_cache.meta.check_verification_data;
+             }
+         }
+-
++        
++        /* Fix the debug capabilities, to prevent needing a hbl recompilation. */
++        FixDebugCapabilityForHbl(static_cast<util::BitPack32 *>(meta->acid_kac), meta->acid->kac_size / sizeof(util::BitPack32));
++        FixDebugCapabilityForHbl(static_cast<util::BitPack32 *>(meta->aci_kac),  meta->aci->kac_size  / sizeof(util::BitPack32));
+         /* Pre-process the capabilities. */
+         /* This is used to e.g. avoid passing memory region descriptor to older kernels. */
+         PreProcessCapability(static_cast<util::BitPack32 *>(meta->acid_kac), meta->acid->kac_size / sizeof(util::BitPack32));
+-- 
+2.47.1.windows.1
+

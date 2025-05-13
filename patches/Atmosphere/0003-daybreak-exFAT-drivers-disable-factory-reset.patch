@@ -1,7 +1,7 @@
 From d5df0c82105cfa0f8391f5db09b5e8fa247d0146 Mon Sep 17 00:00:00 2001
 From: redraz <redrazlive@gmail.com>
 Date: Thu, 17 Oct 2024 01:55:37 +0300
-Subject: [PATCH] daybreak exFAT drivers & disable factory reset
+Subject: [PATCH] Daybreak exFAT drivers & disable factory reset
 
 ---
  troposphere/daybreak/source/ui.cpp | 25 ++++++++++++-------------

@@ -1,0 +1,21 @@
+[
+    {
+        "name": "`GPU Eco Mode"
+    },
+    {
+        "name": "ECO Stage 1 - 0",
+        "hex": "00"
+    },
+    {
+        "name": "ECO Stage 2 - 1",
+        "hex": "01"
+    },
+    {
+        "name": "ECO Stage 3 - 2",
+        "hex": "02"
+    },
+    {
+        "name": "Manual - 3 - Apply table",
+        "hex": "03"
+    }
+]

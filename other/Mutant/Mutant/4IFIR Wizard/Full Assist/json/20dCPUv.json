@@ -1,0 +1,21 @@
+[
+    {
+        "name": "`CPU Min-High Mode"
+    },
+    {
+        "name": "Default - 0",
+        "hex": "00"
+    },
+    {
+        "name": "ECO Stage 1 - 1",
+        "hex": "01"
+    },
+    {
+        "name": "ECO Stage 2 - 2",
+        "hex": "02"
+    },
+    {
+        "name": "ECO Stage 3 - 3",
+        "hex": "03"
+    }
+]

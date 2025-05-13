@@ -1,0 +1,39 @@
+From fbfbbc87e0ab781cb2ed67c23b75dea738eb1759 Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Fri, 31 Jan 2025 20:40:23 +0300
+Subject: [PATCH] Fixed forwarders
+
+---
+ stratosphere/loader/source/ldr_meta.cpp | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/stratosphere/loader/source/ldr_meta.cpp b/stratosphere/loader/source/ldr_meta.cpp
+index 04e71d38b..06ea815cc 100644
+--- a/stratosphere/loader/source/ldr_meta.cpp
++++ b/stratosphere/loader/source/ldr_meta.cpp
+@@ -253,9 +253,7 @@ namespace ams::ldr {
+                 }
+             }
+ 
+-            /* Fix the debug capabilities, to prevent needing a hbl recompilation. */
+-            FixDebugCapabilityForHbl(static_cast<util::BitPack32 *>(meta->acid_kac), meta->acid->kac_size / sizeof(util::BitPack32));
+-            FixDebugCapabilityForHbl(static_cast<util::BitPack32 *>(meta->aci_kac),  meta->aci->kac_size  / sizeof(util::BitPack32));
++
+         } else if (hos::GetVersion() >= hos::Version_10_0_0) {
+             /* If storage id is none, there is no base code filesystem, and thus it is impossible for us to validate. */
+             /* However, if we're an application, we are guaranteed a base code filesystem. */
+@@ -268,7 +266,10 @@ namespace ams::ldr {
+                 meta->check_verification_data = g_original_meta_cache.meta.check_verification_data;
+             }
+         }
+-
++        
++        /* Fix the debug capabilities, to prevent needing a hbl recompilation. */
++        FixDebugCapabilityForHbl(static_cast<util::BitPack32 *>(meta->acid_kac), meta->acid->kac_size / sizeof(util::BitPack32));
++        FixDebugCapabilityForHbl(static_cast<util::BitPack32 *>(meta->aci_kac),  meta->aci->kac_size  / sizeof(util::BitPack32));
+         /* Pre-process the capabilities. */
+         /* This is used to e.g. avoid passing memory region descriptor to older kernels. */
+         PreProcessCapability(static_cast<util::BitPack32 *>(meta->acid_kac), meta->acid->kac_size / sizeof(util::BitPack32));
+-- 
+2.47.1.windows.1
+
