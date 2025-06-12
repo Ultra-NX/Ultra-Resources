@@ -1,0 +1,39 @@
+From 91cbcb6b05dff30b1f0965b8f4a0e76ca44562ad Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Thu, 15 May 2025 13:42:41 +0300
+Subject: [PATCH] 8Gb Patch
+
+---
+ .../libexosphere/include/exosphere/pkg1/pkg1_boot_config.hpp    | 2 +-
+ libraries/libexosphere/source/fuse/fuse_api.cpp                 | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/libraries/libexosphere/include/exosphere/pkg1/pkg1_boot_config.hpp b/libraries/libexosphere/include/exosphere/pkg1/pkg1_boot_config.hpp
+index b61fb7e07..0b5708851 100644
+--- a/libraries/libexosphere/include/exosphere/pkg1/pkg1_boot_config.hpp
++++ b/libraries/libexosphere/include/exosphere/pkg1/pkg1_boot_config.hpp
+@@ -71,7 +71,7 @@ namespace ams::pkg1 {
+         u8 padding_38[0x200 - 0x38];
+ 
+         constexpr bool IsDevelopmentFunctionEnabled() const {
+-            return (this->flags1[0] & (1 << 1)) != 0;
++            return true;
+         }
+ 
+         constexpr bool IsSErrorDebugEnabled() const {
+diff --git a/libraries/libexosphere/source/fuse/fuse_api.cpp b/libraries/libexosphere/source/fuse/fuse_api.cpp
+index 837ad7351..f1a9d5b46 100644
+--- a/libraries/libexosphere/source/fuse/fuse_api.cpp
++++ b/libraries/libexosphere/source/fuse/fuse_api.cpp
+@@ -321,7 +321,7 @@ namespace ams::fuse {
+ 
+     DramId GetDramId() {
+         /* Get the value. */
+-        return static_cast<DramId>(GetDramIdValue(util::BitPack32{GetCommonOdmWord(4)}));
++        return static_cast<DramId>(28);
+     }
+ 
+     HardwareType GetHardwareType() {
+-- 
+2.47.1.windows.1
+

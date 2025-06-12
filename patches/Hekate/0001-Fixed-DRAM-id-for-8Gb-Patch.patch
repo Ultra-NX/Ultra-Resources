@@ -1,0 +1,48 @@
+From bb769732e32600e937a17f1697f77f82cbeccac1 Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Thu, 15 May 2025 13:35:44 +0300
+Subject: [PATCH] Fixed DRAM id for 8Gb Patch
+
+---
+ bdk/soc/fuse.c | 25 +------------------------
+ 1 file changed, 1 insertion(+), 24 deletions(-)
+
+diff --git a/bdk/soc/fuse.c b/bdk/soc/fuse.c
+index 9668196..ed55f20 100644
+--- a/bdk/soc/fuse.c
++++ b/bdk/soc/fuse.c
+@@ -90,30 +90,7 @@ u32 fuse_read_odm_keygen_rev()
+ 
+ u32 fuse_read_dramid(bool raw_id)
+ {
+-	bool tegra_t210 = hw_get_chip_id() == GP_HIDREV_MAJOR_T210;
+-	u32  odm4       = fuse_read_odm(4);
+-
+-	u32 dramid = (odm4 & 0xF8) >> 3;
+-
+-	// Get extended dram id info.
+-	if (!tegra_t210)
+-		dramid |= (odm4 & 0x7000) >> 7;
+-
+-	if (raw_id)
+-		return dramid;
+-
+-	if (tegra_t210)
+-	{
+-		if (dramid > 7)
+-			dramid = 0;
+-	}
+-	else
+-	{
+-		if (dramid > 34)
+-			dramid = 8;
+-	}
+-
+-	return dramid;
++    return 28;
+ }
+ 
+ u32 fuse_read_hw_state()
+-- 
+2.47.1.windows.1
+
