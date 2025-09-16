@@ -1,6 +1,6 @@
-From 91cbcb6b05dff30b1f0965b8f4a0e76ca44562ad Mon Sep 17 00:00:00 2001
+From dc4dad4ef0b12dcfe4ad4860ea56d9934a2b5331 Mon Sep 17 00:00:00 2001
 From: redraz <redrazlive@gmail.com>
-Date: Thu, 15 May 2025 13:42:41 +0300
+Date: Sun, 3 Aug 2025 16:52:04 +0300
 Subject: [PATCH] 8Gb Patch
 
 ---
@@ -35,5 +35,5 @@ index 837ad7351..f1a9d5b46 100644
  
      HardwareType GetHardwareType() {
 -- 
-2.47.1.windows.1
+2.49.0
 
