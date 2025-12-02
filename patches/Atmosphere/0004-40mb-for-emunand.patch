@@ -1,0 +1,58 @@
+From cda543da79a7dbe31dc3d194a6feec20db8cf1c3 Mon Sep 17 00:00:00 2001
+From: redraz <redrazlive@gmail.com>
+Date: Tue, 2 Dec 2025 17:02:22 +0300
+Subject: [PATCH] 40mb for emunand
+
+---
+ .../nintendo/nx/kern_k_system_control.cpp     | 26 ++++++++++++++-----
+ 1 file changed, 19 insertions(+), 7 deletions(-)
+
+diff --git a/libraries/libmesosphere/source/board/nintendo/nx/kern_k_system_control.cpp b/libraries/libmesosphere/source/board/nintendo/nx/kern_k_system_control.cpp
+index bb7581c83..66cf8af24 100644
+--- a/libraries/libmesosphere/source/board/nintendo/nx/kern_k_system_control.cpp
++++ b/libraries/libmesosphere/source/board/nintendo/nx/kern_k_system_control.cpp
+@@ -98,6 +98,12 @@ namespace ams::kern::board::nintendo::nx {
+             return (table[(offset / sizeof(u32)) / BITSIZEOF(u8)] & (1u << ((offset / sizeof(u32)) % BITSIZEOF(u8)))) != 0;
+         }
+ 
++        ALWAYS_INLINE bool IsEmummcActiveForInit() {
++            u64 value = 0;
++            smc::init::GetConfig(&value, 1, smc::ConfigItem::ExosphereEmummcType);
++            return value != 0; // 0 = no emummc, 1 = partition, 2 = files
++        }
++
+         /* TODO: Generate this from a list of register names (see similar logic in exosphere)? */
+         constexpr inline const u8 McKernelRegisterWhitelist[(PageSize / sizeof(u32)) / BITSIZEOF(u8)] = {
+             0x9F, 0x31, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
+@@ -363,15 +369,21 @@ namespace ams::kern::board::nintendo::nx {
+         /* Return (possibly) adjusted size. */
+         /* NOTE: On 20.0.0+ (and even more-so 21.0.0+) the browser requires much more memory in the applet pool in order to function. */
+         /* Thus, we have to reduce our extra system memory size by 26 MB to compensate. */
+-        if (kern::GetTargetFirmware() >= ams::TargetFirmware_21_0_0) {
+-            constexpr size_t ExtraSystemMemoryForAtmosphere_21_0_0 = 7_MB;
+-            return base_pool_size - ExtraSystemMemoryForAtmosphere_21_0_0 - KTraceBufferSize;
+-        } else if (kern::GetTargetFirmware() >= ams::TargetFirmware_20_0_0) {
+-            constexpr size_t ExtraSystemMemoryForAtmosphere_20_0_0 = 14_MB;
+-            return base_pool_size - ExtraSystemMemoryForAtmosphere_20_0_0 - KTraceBufferSize;
+-        } else {
++
++        if (IsEmummcActiveForInit()) {
+             constexpr size_t ExtraSystemMemoryForAtmosphere = 40_MB;
+             return base_pool_size - ExtraSystemMemoryForAtmosphere - KTraceBufferSize;
++        } else {
++            if (kern::GetTargetFirmware() >= ams::TargetFirmware_21_0_0) {
++                constexpr size_t ExtraSystemMemoryForAtmosphere_21_0_0 = 7_MB;
++                return base_pool_size - ExtraSystemMemoryForAtmosphere_21_0_0 - KTraceBufferSize;
++            } else if (kern::GetTargetFirmware() >= ams::TargetFirmware_20_0_0) {
++                constexpr size_t ExtraSystemMemoryForAtmosphere_20_0_0 = 14_MB;
++                return base_pool_size - ExtraSystemMemoryForAtmosphere_20_0_0 - KTraceBufferSize;
++            } else {
++                constexpr size_t ExtraSystemMemoryForAtmosphere = 40_MB;
++                return base_pool_size - ExtraSystemMemoryForAtmosphere - KTraceBufferSize;
++            }
+         }
+     }
+ 
+-- 
+2.47.1.windows.1
+
