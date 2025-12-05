@@ -1,7 +1,7 @@
 From cda543da79a7dbe31dc3d194a6feec20db8cf1c3 Mon Sep 17 00:00:00 2001
 From: redraz <redrazlive@gmail.com>
 Date: Tue, 2 Dec 2025 17:02:22 +0300
-Subject: [PATCH] 40mb for emunand
+Subject: [PATCH] 40MB for emunand
 
 ---
  .../nintendo/nx/kern_k_system_control.cpp     | 26 ++++++++++++++-----
