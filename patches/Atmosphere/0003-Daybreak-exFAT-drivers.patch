@@ -1,14 +1,14 @@
-From ad64e915a4bc78eac20f28d673b8117746caf36b Mon Sep 17 00:00:00 2001
+From f9098258ce41f3f9b8e04859ccbf0e68f596a775 Mon Sep 17 00:00:00 2001
 From: redraz <redrazlive@gmail.com>
-Date: Tue, 2 Dec 2025 12:39:26 +0300
-Subject: [PATCH] Daybreak exFAT drivers disable factory reset
+Date: Thu, 12 Jun 2025 09:58:33 +0300
+Subject: [PATCH] Daybreak exFAT drivers
 
 ---
- troposphere/daybreak/source/ui.cpp | 28 ++++++++++++++--------------
- 1 file changed, 14 insertions(+), 14 deletions(-)
+ troposphere/daybreak/source/ui.cpp | 16 ++++++----------
+ 1 file changed, 6 insertions(+), 10 deletions(-)
 
 diff --git a/troposphere/daybreak/source/ui.cpp b/troposphere/daybreak/source/ui.cpp
-index 1e63f8811..0165c19c7 100644
+index 693063ea6..83d828af0 100644
 --- a/troposphere/daybreak/source/ui.cpp
 +++ b/troposphere/daybreak/source/ui.cpp
 @@ -66,8 +66,8 @@ namespace dbk {
@@ -31,36 +31,16 @@ index 1e63f8811..0165c19c7 100644
          this->SetButtonSelected(ContinueButtonId, true);
      }
  
-@@ -766,7 +766,7 @@ namespace dbk {
- 
-         /* Add buttons. */
-         this->AddButton(BackButtonId, "Back", x + HorizontalInset, y + WindowHeight - BottomInset - ButtonHeight, button_width, ButtonHeight);
--        this->AddButton(ContinueButtonId, "Continue", x + HorizontalInset + button_width + ButtonHorizontalGap, y + WindowHeight - BottomInset - ButtonHeight, button_width, ButtonHeight);
-+        this->AddButton(ContinueButtonId, "Install", x + HorizontalInset + button_width + ButtonHorizontalGap, y + WindowHeight - BottomInset - ButtonHeight, button_width, ButtonHeight);
-         this->SetButtonEnabled(BackButtonId, false);
-         this->SetButtonEnabled(ContinueButtonId, false);
- 
-@@ -889,11 +889,15 @@ namespace dbk {
+@@ -889,7 +889,7 @@ namespace dbk {
                      /* Check if exfat is supported. */
                      g_exfat_supported = m_update_info.exfat_supported && R_SUCCEEDED(m_validation_info.exfat_result);
                      if (!g_exfat_supported) {
 -                        g_use_exfat = false;
--                    }
 +                        g_use_exfat = true;
-+                     }
-+ 
-+
-+                    /* Set the reset to factory settings flag to false by default. */
-+                    g_reset_to_factory = false;
+                     }
  
--                    /* Create the next menu. */
--                    std::shared_ptr<Menu> next_menu = std::make_shared<ChooseResetMenu>(g_current_menu);
-+                    /* Create the install update menu. */
-+                    std::shared_ptr<Menu> next_menu = std::make_shared<InstallUpdateMenu>(g_current_menu);
- 
-                     /* Warn the user if they're updating with exFAT supposed to be supported but not present/corrupted. */
-                     if (m_update_info.exfat_supported && R_FAILED(m_validation_info.exfat_result)) {
-@@ -960,11 +964,7 @@ namespace dbk {
+                     /* Create the next menu. */
+@@ -960,11 +960,7 @@ namespace dbk {
  
              std::shared_ptr<Menu> next_menu;
  
@@ -73,7 +53,7 @@ index 1e63f8811..0165c19c7 100644
  
              if (g_reset_to_factory) {
                  ChangeMenu(std::make_shared<WarningMenu>(g_current_menu, next_menu, "Warning: Factory reset selected", "Saves and installed games will be permanently deleted."));
-@@ -1022,7 +1022,7 @@ namespace dbk {
+@@ -1022,7 +1018,7 @@ namespace dbk {
          if (const Button *activated_button = this->GetActivatedButton(); activated_button != nullptr) {
              switch (activated_button->id) {
                  case Fat32ButtonId:
