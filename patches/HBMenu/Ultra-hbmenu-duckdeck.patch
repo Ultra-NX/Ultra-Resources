@@ -1,0 +1,407 @@
+diff --git a/common/menu.c b/common/menu.c
+index ca85496..8f268d1 100644
+--- a/common/menu.c
++++ b/common/menu.c
+@@ -1,4 +1,5 @@
+ #include <time.h>
++#include <libconfig.h>
+ #include "common.h"
+ #include "netloader.h"
+ 
+@@ -11,6 +12,81 @@ double menuTimer;
+ char rootPathBase[PATH_MAX];
+ char rootPath[PATH_MAX+8];
+ 
++duckdeck_settings_s duckdeckSettings = {
++    .columns = 4,
++    .iconSize = 96,
++};
++
++void duckdeckApplyMenuLayout(void) {
++    const int iconSize = duckdeckSettings.iconSize;
++    const int tileSize = iconSize + 20;
++    ThemeLayoutObject *menuList = &themeCurrent.layoutObjects[ThemeLayoutId_MenuList];
++    ThemeLayoutObject *menuIcon = &themeCurrent.layoutObjects[ThemeLayoutId_MenuListIcon];
++    ThemeLayoutObject *menuName = &themeCurrent.layoutObjects[ThemeLayoutId_MenuListName];
++
++    menuList->posStart[0] = 40;
++    menuList->posStart[1] = 140;
++    menuList->posEnd[0] = tileSize + 22;
++    menuList->posEnd[1] = tileSize + 8;
++    menuList->size[0] = tileSize;
++    menuList->size[1] = tileSize;
++    menuIcon->posStart[0] = 14;
++    menuIcon->posStart[1] = 12;
++    menuIcon->size[0] = iconSize;
++    menuIcon->size[1] = iconSize;
++    menuName->posStart[0] = 12;
++    menuName->posStart[1] = 18;
++    menuName->size[0] = tileSize - 24;
++
++    // Keep the active-entry panel aligned to the OLED frame even when an
++    // older theme has its own layout values.
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryIcon].posStart[0] = 850;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryIcon].posStart[1] = 190;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryIcon].size[0] = 220;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryIcon].size[1] = 220;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryName].posStart[0] = 730;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryName].posStart[1] = 450;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryName].size[0] = 480;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryAuthor].posStart[0] = 730;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryAuthor].posStart[1] = 505;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryVersion].posStart[0] = 730;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryVersion].posStart[1] = 535;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryRecompileWarning].posStart[0] = 730;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryRecompileWarning].posStart[1] = 150;
++    themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryRecompileWarning].size[0] = 480;
++}
++
++void duckdeckLoadSettings(void) {
++    config_t cfg;
++    config_init(&cfg);
++
++    char path[PATH_MAX] = {0};
++    snprintf(path, sizeof(path) - 1, "%s/config/nx-hbmenu/duckdeck.cfg", rootPathBase);
++
++    if (config_read_file(&cfg, path)) {
++        config_setting_t *settings = config_lookup(&cfg, "duckdeck");
++        int value = 0;
++        if (settings && config_setting_lookup_int(settings, "columns", &value) && value >= 1 && value <= 6)
++            duckdeckSettings.columns = value;
++        if (settings && config_setting_lookup_int(settings, "iconSize", &value) && value >= 48 && value <= 256)
++            duckdeckSettings.iconSize = value;
++    }
++
++    config_destroy(&cfg);
++}
++
++int duckdeckGetFirstVisibleRow(menu_s *menu, int tileHeight) {
++    const int rowsVisible = (640 - 140) / tileHeight;
++    const int columns = duckdeckSettings.columns;
++    const int currentRow = menu->curEntry / columns;
++    const int totalRows = (menu->nEntries + columns - 1) / columns;
++    int firstRow = currentRow - rowsVisible + 1;
++    if (firstRow < 0) firstRow = 0;
++    if (firstRow > totalRows - rowsVisible) firstRow = totalRows - rowsVisible;
++    if (firstRow < 0) firstRow = 0;
++    return firstRow;
++}
++
+ uint8_t *folder_icon_large, *folder_icon_small;
+ uint8_t *invalid_icon_large, *invalid_icon_small;
+ uint8_t *theme_icon_large, *theme_icon_small;
+@@ -27,6 +103,16 @@ char *menuGetRootBasePath(void) {
+     return rootPathBase;
+ }
+ 
++static bool duckdeckIsRootFolderEntry(const menuEntry_s *me) {
++    const char *root = menuGetRootPath();
++    const size_t rootLength = strlen(root);
++
++    return me->type == ENTRY_TYPE_FOLDER
++        && strncmp(me->path, root, rootLength) == 0
++        && me->path[rootLength] == '/'
++        && strchr(me->path + rootLength + 1, '/') == NULL;
++}
++
+ void launchMenuEntryTask(menuEntry_s* arg) {
+     menuEntry_s* me = arg;
+     if (me->type == ENTRY_TYPE_FOLDER)
+@@ -173,6 +259,7 @@ void launchApplyThemeTask(menuEntry_s* arg) {
+     menu_s* menu = menuGetCurrent();
+     SetThemePathToConfig(themePath);
+     themeStartup(themeGlobalPreset);
++    duckdeckApplyMenuLayout();
+     menuStartupCommon();
+     menuLoadFileassoc();
+     if (hbmenu_state == HBMENU_THEME_MENU) { // Normally this should never be used outside of theme-menu.
+@@ -210,6 +297,37 @@ static void drawImage(int x, int y, int width, int height, const uint8_t *image,
+     }
+ }
+ 
++static bool insideRoundedRect(int x, int y, int width, int height, int radius) {
++    if (radius <= 0 || (x >= radius && x < width-radius) || (y >= radius && y < height-radius))
++        return true;
++
++    const int cx = x < radius ? radius-1 : width-radius;
++    const int cy = y < radius ? radius-1 : height-radius;
++    const int dx = x-cx;
++    const int dy = y-cy;
++    return dx*dx + dy*dy <= radius*radius;
++}
++
++static void drawImageRounded(int x, int y, int width, int height, const uint8_t *image, ImageMode mode, int radius) {
++    for (int tmpy=0; tmpy<height; tmpy++) {
++        for (int tmpx=0; tmpx<width; tmpx++) {
++            if (!insideRoundedRect(tmpx, tmpy, width, height, radius))
++                continue;
++
++            int pos;
++            color_t color;
++            if (mode == IMAGE_MODE_RGB24) {
++                pos = ((tmpy*width) + tmpx) * 3;
++                color = MakeColor(image[pos], image[pos+1], image[pos+2], 255);
++            } else {
++                pos = ((tmpy*width) + tmpx) * 4;
++                color = MakeColor(image[pos], image[pos+1], image[pos+2], image[pos+3]);
++            }
++            DrawPixel(x+tmpx, y+tmpy, color);
++        }
++    }
++}
++
+ //Draws an RGBA8888 image masked by the passed color.
+ static void drawIcon(int x, int y, int width, int height, const uint8_t *image, color_t color) {
+     int tmpx, tmpy;
+@@ -343,12 +461,12 @@ static void drawEntry(menuEntry_s* me, int off_x, int is_active) {
+ 
+     if (smallimg) {
+         layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuListIcon];
+-        drawImage(start_x + layoutobj->posStart[0], start_y + layoutobj->posStart[1], layoutobj->size[0], layoutobj->size[1], smallimg, IMAGE_MODE_RGB24);
++        drawImageRounded(start_x + layoutobj->posStart[0], start_y + layoutobj->posStart[1], layoutobj->size[0], layoutobj->size[1], smallimg, IMAGE_MODE_RGB24, 12);
+     }
+ 
+     layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryIcon];
+     if (is_active && largeimg && layoutobj->visible) {
+-        drawImage(layoutobj->posStart[0], layoutobj->posStart[1], layoutobj->size[0], layoutobj->size[1], largeimg, IMAGE_MODE_RGB24);
++        drawImageRounded(layoutobj->posStart[0], layoutobj->posStart[1], layoutobj->size[0], layoutobj->size[1], largeimg, IMAGE_MODE_RGB24, 24);
+ 
+         shadow_start_y = layoutobj->posStart[1]+layoutobj->size[1];
+         border_start_x = layoutobj->posStart[0];
+@@ -375,7 +493,16 @@ static void drawEntry(menuEntry_s* me, int off_x, int is_active) {
+     snprintf(tmpstr, sizeof(tmpstr)-1, "%s%s", strptr, me->name);
+ 
+     layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuListName];
+-    DrawTextTruncate(layoutobj->font, start_x + layoutobj->posStart[0], start_y + layoutobj->posStart[1], themeCurrent.borderTextColor, tmpstr, layoutobj->size[0], "...");
++    if (layoutobj->visible) {
++        DrawTextTruncate(layoutobj->font, start_x + layoutobj->posStart[0], start_y + layoutobj->posStart[1], themeCurrent.borderTextColor, tmpstr, layoutobj->size[0], "...");
++    } else if (duckdeckIsRootFolderEntry(me)) {
++        uint32_t textWidth = 0, textHeight = 0;
++        GetTextDimensions(layoutobj->font, tmpstr, &textWidth, &textHeight);
++        if (textWidth <= (uint32_t)layoutobj->size[0])
++            DrawText(layoutobj->font, start_x + (layoutobj->size[0] - textWidth) / 2, start_y + layoutobj->posStart[1], themeCurrent.borderTextColor, tmpstr);
++        else
++            DrawTextTruncate(layoutobj->font, start_x + layoutobj->posStart[0], start_y + layoutobj->posStart[1], themeCurrent.borderTextColor, tmpstr, layoutobj->size[0], "...");
++    }
+ 
+     if (is_active) {
+         layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryName];
+@@ -395,7 +522,7 @@ static void drawEntry(menuEntry_s* me, int off_x, int is_active) {
+             if (me->abi_revision < NRO_ABI_CURRENT_REVISION) {
+                 strptr = textGetString(StrId_RecompileWarning);
+                 layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuActiveEntryRecompileWarning];
+-                if (layoutobj->visible) DrawText(layoutobj->font, layoutobj->posStart[0], layoutobj->posStart[1], themeCurrent.attentionTextColor, strptr);
++                if (layoutobj->visible) DrawTextTruncate(layoutobj->font, layoutobj->posStart[0], layoutobj->posStart[1], themeCurrent.attentionTextColor, strptr, layoutobj->size[0], "...");
+             }
+         }
+     }
+@@ -468,6 +595,8 @@ void menuLoadFileassoc(void) {
+ }
+ 
+ void menuStartup(void) {
++    duckdeckLoadSettings();
++    duckdeckApplyMenuLayout();
+     menuLoadFileassoc();
+ 
+     menuScan(rootPath);
+@@ -801,62 +930,58 @@ void menuLoop(void) {
+     }
+     else
+     {
+-        static int v = 0;
+-        layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuListTiles];
+-        int entries_count = layoutobj->posEnd[0];
+         layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuList];
+-
+-        // Gentle Realign only when not manually moving
+-        if (menu->slideSpeed == 0) {
+-            if (menu->nEntries > entries_count) {
+-                int wanted_x = clamp(-menu->curEntry * layoutobj->posEnd[0], -(menu->nEntries - entries_count) * layoutobj->posEnd[0], 0);
+-                menu->xPos += v;
+-                v += (wanted_x - menu->xPos) / 3;
+-                v /= 2;
+-            }
+-            else {
+-                menu->xPos = v = 0;
+-            }
+-        }
+-        else {
+-            menu->xPos += menu->slideSpeed;
+-
+-            if (abs(menu->slideSpeed) > 2) {
+-                // Slow down way faster when outside the normal bounds
+-                if (menu->xPos > 0 || menu->xPos < -(menu->nEntries) * layoutobj->posEnd[0]) {
+-                    menu->slideSpeed *= .5f;
+-                }
+-                else {
+-                    menu->slideSpeed *= .9f;
+-                }
+-            }
+-            else {
+-                menu->slideSpeed = 0;
+-            }
+-
+-            menu->curEntry = clamp(roundf(-((float) menu->xPos / layoutobj->posEnd[0])), 0, menu->nEntries);
+-        }
++        menu->xPos = 0;
++        menu->slideSpeed = 0;
++
++        const int columns = duckdeckSettings.columns;
++        const int iconSize = duckdeckSettings.iconSize;
++        const bool isRootMenu = strcmp(menu->dirname, menuGetRootPath()) == 0;
++        // Folder names need their own line below a full-size icon. Do not
++        // scale the icon down: this renderer reads pre-sized RGB buffers.
++        const int tileHeight = iconSize + (isRootMenu ? 44 : 20);
++        const int tileWidth = iconSize + 20;
++        const int rootIconSize = iconSize;
++        const int firstRow = duckdeckGetFirstVisibleRow(menu, tileHeight);
++
++        // Layout is deliberately computed here so a user can alter iconSize
++        // and columns in duckdeck.cfg without rebuilding a theme.
++        layoutobj->posStart[0] = 40;
++        layoutobj->posStart[1] = 140;
++        layoutobj->posEnd[0] = tileWidth + 22;
++        layoutobj->posEnd[1] = tileHeight + 8;
++        layoutobj->size[0] = tileWidth;
++        layoutobj->size[1] = tileHeight;
++        themeCurrent.layoutObjects[ThemeLayoutId_MenuListIcon].posStart[0] = isRootMenu ? (tileWidth - rootIconSize) / 2 : 14;
++        themeCurrent.layoutObjects[ThemeLayoutId_MenuListIcon].posStart[1] = isRootMenu ? 10 : 12;
++        themeCurrent.layoutObjects[ThemeLayoutId_MenuListIcon].size[0] = isRootMenu ? rootIconSize : iconSize;
++        themeCurrent.layoutObjects[ThemeLayoutId_MenuListIcon].size[1] = isRootMenu ? rootIconSize : iconSize;
++        themeCurrent.layoutObjects[ThemeLayoutId_MenuListName].posStart[0] = isRootMenu ? 4 : 12;
++        themeCurrent.layoutObjects[ThemeLayoutId_MenuListName].posStart[1] = isRootMenu ? tileHeight - 4 : 18;
++        themeCurrent.layoutObjects[ThemeLayoutId_MenuListName].size[0] = isRootMenu ? tileWidth - 8 : tileWidth - 24;
+ 
+         menuEntry_s *active_entry = NULL;
+-
+-        // Draw menu entries
+         for (me = menu->firstEntry, i = 0; me; me = me->next, i ++) {
+-            int entry_start_x = layoutobj->posStart[0] + i * layoutobj->posEnd[0];
+-            int entry_draw_x = entry_start_x + menu->xPos;
+-
+-            int screen_width = 1280;
+-            if (entry_start_x >= (screen_width - menu->xPos))
++            const int row = i / columns;
++            const int column = i % columns;
++            const int entry_draw_y = layoutobj->posStart[1] + (row - firstRow) * layoutobj->posEnd[1];
++            const int entry_draw_x = layoutobj->posStart[0] + column * layoutobj->posEnd[0];
++
++            // Draw only complete rows inside the left OLED panel. This keeps
++            // the next row from spilling into the bottom action bar.
++            if (entry_draw_y + tileHeight > 640)
+                 break;
++            if (entry_draw_y + tileHeight < layoutobj->posStart[1])
++                continue;
+ 
+-            int is_active = i==menu->curEntry;
+-
++            const int is_active = i == menu->curEntry;
+             if (is_active)
+                 active_entry = me;
+ 
+-            if (!is_active && entry_draw_x < -(layoutobj->posStart[0] + layoutobj->posEnd[0]))
+-                continue;
+-
++            const int saved_y = layoutobj->posStart[1];
++            layoutobj->posStart[1] = entry_draw_y;
+             drawEntry(me, entry_draw_x, is_active);
++            layoutobj->posStart[1] = saved_y;
+         }
+ 
+         layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuTypeMsg];
+diff --git a/common/menu.h b/common/menu.h
+index 38e4662..9002405 100644
+--- a/common/menu.h
++++ b/common/menu.h
+@@ -41,6 +41,17 @@ struct menu_s_tag
+     char dirname[PATH_MAX+1];
+ };
+ 
++typedef struct
++{
++    int columns;
++    int iconSize;
++} duckdeck_settings_s;
++
++extern duckdeck_settings_s duckdeckSettings;
++void duckdeckLoadSettings(void);
++void duckdeckApplyMenuLayout(void);
++int duckdeckGetFirstVisibleRow(menu_s *menu, int tileHeight);
++
+ typedef struct
+ {
+     char* dst;
+diff --git a/nx_main/main.c b/nx_main/main.c
+index 86e8b75..445059c 100644
+--- a/nx_main/main.c
++++ b/nx_main/main.c
+@@ -215,8 +215,7 @@ bool menuUpdate(void) {
+     bool exitflag = 0;
+     menu_s* menu = menuGetCurrent();
+     u64 down = menuGetKeysDown();
+-    ThemeLayoutObject *layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuListTiles];
+-    int entries_count = layoutobj->posEnd[0];
++    int entries_count = duckdeckSettings.columns;
+ 
+     handleTouch(menu);
+ 
+@@ -249,8 +248,8 @@ bool menuUpdate(void) {
+ 
+         if (down & HidNpadButton_AnyLeft) move--;
+         if (down & HidNpadButton_AnyRight) move++;
+-        if (down & (HidNpadButton_AnyDown | HidNpadButton_ZL)) move-=entries_count;
+-        if (down & (HidNpadButton_AnyUp | HidNpadButton_ZR)) move+=entries_count;
++        if (down & (HidNpadButton_AnyDown | HidNpadButton_ZL)) move+=entries_count;
++        if (down & (HidNpadButton_AnyUp | HidNpadButton_ZR)) move-=entries_count;
+ 
+         int newEntry = menu->curEntry + move;
+         if (newEntry < 0) newEntry = 0;
+diff --git a/nx_main/nx_touch.c b/nx_main/nx_touch.c
+index 8f6e802..e2381b5 100644
+--- a/nx_main/nx_touch.c
++++ b/nx_main/nx_touch.c
+@@ -19,19 +19,27 @@ void touchInit(void) {
+     hidInitializeTouchScreen();
+ }
+ 
+-void handleTappingOnApp(menu_s* menu, int px) {
++void handleTappingOnApp(menu_s* menu, int px, int py) {
+     int i = 0;
+     menuEntry_s *me = NULL;
+-    ThemeLayoutObject *layoutobj = &themeCurrent.layoutObjects[ThemeLayoutId_MenuList];
++    const int columns = duckdeckSettings.columns;
++    const int iconSize = duckdeckSettings.iconSize;
++    const bool isRootMenu = strcmp(menu->dirname, menuGetRootPath()) == 0;
++    const int tileHeight = iconSize + (isRootMenu ? 44 : 20);
++    const int tileWidth = iconSize + 20;
++    const int firstRow = duckdeckGetFirstVisibleRow(menu, tileHeight);
+ 
+     for (me = menu->firstEntry, i = 0; me; me = me->next, i ++) {
+-        int entry_start_x = layoutobj->posStart[0] + i * layoutobj->posEnd[0];
++        const int row = i / columns;
++        const int column = i % columns;
++        const int entry_start_x = 40 + column * (tileWidth + 22);
++        const int entry_start_y = 140 + (row - firstRow) * (tileHeight + 8);
+ 
+-        int screen_width = 1280;
+-        if (entry_start_x >= (screen_width - menu->xPos))
++        if (entry_start_y + tileHeight > 640)
+             break;
+ 
+-        if (px >= (entry_start_x + menu->xPos) && px <= (entry_start_x + menu->xPos) + layoutobj->size[0]) {
++        if (px >= entry_start_x && px <= entry_start_x + tileWidth && py >= entry_start_y && py <= entry_start_y + tileHeight) {
++            menu->curEntry = i;
+             launchMenuEntryTask(me);
+             break;
+         }
+@@ -118,8 +126,8 @@ void handleTouch(menu_s* menu) {
+             }
+         } else if (touchInfo.isTap && !netloader_active) {
+             // App Icons
+-            if (y1 > layoutobj->posStart[1] && y1 < layoutobj->posStart[1]+layoutobj->size[1]) {
+-                handleTappingOnApp(menu, touchInfo.prevTouch.x);
++            if (y1 > 140 && y1 < 640) {
++                handleTappingOnApp(menu, touchInfo.prevTouch.x, touchInfo.prevTouch.y);
+             }
+             // Bottom Buttons
+             else {

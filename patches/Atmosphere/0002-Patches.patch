@@ -1,0 +1,1281 @@
+From 8a94b1fd1fa3891a54de1e57ddf1a5931e0ac485 Mon Sep 17 00:00:00 2001
+From: borntohonk <6264306+borntohonk@users.noreply.github.com>
+Date: Wed, 25 Mar 2026 21:23:14 +0100
+Subject: [PATCH] :^)
+
+---
+ .../mesosphere/kern_k_embedded_fs_patches.hpp | 303 ++++++++++++++++++
+ .../source/kern_initial_process.cpp           |   4 +
+ .../source/erpt/srv/erpt_srv_report.cpp       |  25 +-
+ .../source/erpt/srv/erpt_srv_report.hpp       |   7 +-
+ .../dns_mitm/dnsmitm_host_redirection.cpp     |   9 +
+ .../source/set_mitm/settings_sd_kvs.cpp       |   6 +
+ .../loader/source/ldr_development_manager.cpp |   2 +-
+ .../loader/source/ldr_embedded_am_patches.inc |  24 --
+ .../loader/source/ldr_embedded_patches.hpp    | 290 +++++++++++++++++
+ .../source/ldr_embedded_usb_patches.inc       | 105 ------
+ stratosphere/loader/source/ldr_meta.cpp       |   2 +-
+ stratosphere/loader/source/ldr_patcher.cpp    | 168 ++++++----
+ stratosphere/loader/source/ldr_patcher.hpp    |  17 +-
+ .../loader/source/ldr_process_creation.cpp    |  46 ++-
+ 14 files changed, 787 insertions(+), 221 deletions(-)
+ create mode 100644 libraries/libmesosphere/include/mesosphere/kern_k_embedded_fs_patches.hpp
+ delete mode 100644 stratosphere/loader/source/ldr_embedded_am_patches.inc
+ create mode 100644 stratosphere/loader/source/ldr_embedded_patches.hpp
+ delete mode 100644 stratosphere/loader/source/ldr_embedded_usb_patches.inc
+
+diff --git a/libraries/libmesosphere/include/mesosphere/kern_k_embedded_fs_patches.hpp b/libraries/libmesosphere/include/mesosphere/kern_k_embedded_fs_patches.hpp
+new file mode 100644
+index 000000000..4bb0ddb96
+--- /dev/null
++++ b/libraries/libmesosphere/include/mesosphere/kern_k_embedded_fs_patches.hpp
+@@ -0,0 +1,303 @@
++/*
++ * Copyright (c) Atmosphère-NX
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms and conditions of the GNU General Public License,
++ * version 2, as published by the Free Software Foundation.
++ *
++ * FS Kernel Inline Patching (Early Boot)
++ * ======================================
++ *
++ * This module implements firmware-aware patching of the FS (Filesystem)
++ * Kernel initial process (KIP) during kernel boot.
++ *
++ * Patching happens in FindAndApplyFsKipPatches(), which is called from
++ * kern_initial_process.cpp right after KInitialProcessReader::Load() decompresses
++ * the FS binary into a KPageGroup, but before KProcess::Initialize().
++ *
++ * Why this approach?
++ *   - We have full kernel access to the still-uninitialized decompressed image.
++ *   - No user-mode sysmodule or debug services required.
++ *   - Extremely early patching (before FS even starts running).
++ *
++ * Pattern Format:
++ *   - Hex strings with ".." as wildcards (e.g. "0694....00..42..0091")
++ *   - These represent raw bytes in memory (little-endian layout).
++ *
++ * Patch Values:
++ *   - AArch64Nop  (0xD503201F) → stored in memory as 1F 20 03 D5
++ *   - AArch64Mov0 (0x2A1F03E0) → stored in memory as E0 03 1F 2A
++ *
++ * Supported Patches (nocntchk + noncasigchk + legacy):
++ *   - tbz-based content checks   → replaced with NOP
++ *   - bl-based signature checks  → replaced with mov w0, #0 or mov w0, wzr
++ */
++
++#pragma once
++#include <mesosphere.hpp>
++
++namespace ams::kern {
++
++    /* FS program ID. Only this process gets patched. */
++    constexpr u64 FsProgramId = 0x0100000000000000ul;
++
++    /* AArch64 instructions used for patching (little-endian 32-bit values) */
++    constexpr u32 AArch64Nop  = 0xD503201Fu;   // nop
++    constexpr u32 AArch64Mov0 = 0x2A1F03E0u;   // mov w0, #0 or mov w0, wzr
++
++    /* Wildcard sentinel used during pattern matching */
++    constexpr u16 REGEX_SKIP = 0x100;
++
++    /* ===================================================================== */
++    /* 1. Original offset-based patch support (kept for compatibility)       */
++    /* ===================================================================== */
++    struct FsKipPatch {
++        size_t offset;
++        u32    patch_value;
++    };
++
++    ALWAYS_INLINE void ApplySingleFsPatch(const FsKipPatch &patch, KPageGroup *pg) {
++        size_t remaining = patch.offset;
++
++        for (const auto &block : *pg) {
++            const size_t block_size = block.GetNumPages() * PageSize;
++
++            if (remaining < block_size) {
++                const KVirtualAddress virt = KMemoryLayout::GetLinearVirtualAddress(block.GetAddress());
++                *reinterpret_cast<u32 *>(GetInteger(virt) + remaining) = patch.patch_value;
++                return;
++            }
++
++            remaining -= block_size;
++        }
++
++        MESOSPHERE_PANIC("FS KIP patch offset 0x%zx is out of range", patch.offset);
++    }
++
++    ALWAYS_INLINE size_t GetPageGroupSize(const KPageGroup *pg) {
++        size_t total_size = 0;
++
++        for (const auto &block : *pg) {
++            total_size += block.GetNumPages() * PageSize;
++        }
++
++        return total_size;
++    }
++
++    ALWAYS_INLINE u8 ReadPageGroupByte(const KPageGroup *pg, size_t offset) {
++        size_t remaining = offset;
++
++        for (const auto &block : *pg) {
++            const size_t block_size = block.GetNumPages() * PageSize;
++
++            if (remaining < block_size) {
++                const KVirtualAddress virt = KMemoryLayout::GetLinearVirtualAddress(block.GetAddress());
++                return *(reinterpret_cast<const u8 *>(GetInteger(virt) + remaining));
++            }
++
++            remaining -= block_size;
++        }
++
++        MESOSPHERE_PANIC("FS KIP read offset 0x%zx is out of range", offset);
++    }
++
++    ALWAYS_INLINE void WritePageGroupByte(KPageGroup *pg, size_t offset, u8 value) {
++        size_t remaining = offset;
++
++        for (const auto &block : *pg) {
++            const size_t block_size = block.GetNumPages() * PageSize;
++
++            if (remaining < block_size) {
++                const KVirtualAddress virt = KMemoryLayout::GetLinearVirtualAddress(block.GetAddress());
++                *(reinterpret_cast<u8 *>(GetInteger(virt) + remaining)) = value;
++                return;
++            }
++
++            remaining -= block_size;
++        }
++
++        MESOSPHERE_PANIC("FS KIP write offset 0x%zx is out of range", offset);
++    }
++
++    ALWAYS_INLINE u32 ReadPageGroupU32(const KPageGroup *pg, size_t offset) {
++        return (static_cast<u32>(ReadPageGroupByte(pg, offset + 0)) << 0)  |
++               (static_cast<u32>(ReadPageGroupByte(pg, offset + 1)) << 8)  |
++               (static_cast<u32>(ReadPageGroupByte(pg, offset + 2)) << 16) |
++               (static_cast<u32>(ReadPageGroupByte(pg, offset + 3)) << 24);
++    }
++
++    ALWAYS_INLINE void WritePageGroupU32(KPageGroup *pg, size_t offset, u32 value) {
++        WritePageGroupByte(pg, offset + 0, static_cast<u8>((value >> 0) & 0xFF));
++        WritePageGroupByte(pg, offset + 1, static_cast<u8>((value >> 8) & 0xFF));
++        WritePageGroupByte(pg, offset + 2, static_cast<u8>((value >> 16) & 0xFF));
++        WritePageGroupByte(pg, offset + 3, static_cast<u8>((value >> 24) & 0xFF));
++    }
++
++    /* ===================================================================== */
++    /* 2. Pattern definition and constexpr parser                            */
++    /* ===================================================================== */
++
++    struct PatternData {
++        u16 data[64]{};
++        u8  size{};
++    };
++
++    /* Converts a pattern string (same format as main.cpp) into PatternData */
++    constexpr PatternData MakePattern(const char* s) {
++        PatternData p{};
++
++        /* Skip optional 0x prefix */
++        if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
++            s += 2;
++        }
++
++        while (*s != '\0' && p.size < util::size(p.data)) {
++            if (s[0] == '.' && s[1] == '.') {
++                p.data[p.size++] = REGEX_SKIP;   // wildcard
++                s += 2;
++            } else {
++                auto hex = [](char c) -> u8 {
++                    if (c >= '0' && c <= '9') return c - '0';
++                    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
++                    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
++                    return 0;
++                };
++                u8 hi = hex(*s++);
++                u8 lo = hex(*s++);
++                p.data[p.size++] = static_cast<u16>((hi << 4) | lo);
++            }
++        }
++        return p;
++    }
++
++    struct FsNarrowPattern {
++        PatternData byte_pattern;      // parsed pattern with wildcards
++        s32         inst_offset;       // offset from pattern start to the instruction
++        s32         patch_offset;      // offset from instruction where we write the patch
++        bool (*cond)(u32 inst);        // condition to verify it's the right instruction
++        u32         patch_value;       // AArch64Nop or AArch64Mov0
++        u32         min_fw_ver;        // 0 = no minimum
++        u32         max_fw_ver;        // UINT32_MAX = no maximum
++    };
++
++    /* Instruction condition helpers (same as sys-patch) */
++    constexpr bool bl_cond(u32 inst) {
++        const auto type = inst >> 24;
++        return type == 0x25 || type == 0x94 || type == 0x97;   // BL / B / BL variants
++    }
++
++    constexpr bool tbz_cond(u32 inst) {
++        return ((inst >> 24) & 0x7F) == 0x36;   // TBZ / TBNZ
++    }
++
++    /* ===================================================================== */
++    /* 3. All FS patterns with firmware version ranges                       */
++    /* ===================================================================== */
++    constexpr FsNarrowPattern g_fs_narrow_patterns[] = {
++        /* Legacy patterns (moved to loader after 9.2.0) */
++        { MakePattern("C8FE4739"),          -24, 0, bl_cond, AArch64Mov0,
++          ATMOSPHERE_TARGET_FIRMWARE_MIN, ATMOSPHERE_TARGET_FIRMWARE_9_2_0 },
++
++        { MakePattern("0210911F000072"),    -5,  0, bl_cond, AArch64Mov0,
++          ATMOSPHERE_TARGET_FIRMWARE_MIN, ATMOSPHERE_TARGET_FIRMWARE_9_2_0 },
++
++        /* tbz -> nop (content / counter checks) */
++        { MakePattern("88..42..58"),        -4,  0, tbz_cond, AArch64Nop,
++          ATMOSPHERE_TARGET_FIRMWARE_1_0_0, ATMOSPHERE_TARGET_FIRMWARE_3_0_2 },
++
++        { MakePattern("1E4839....00......0054"), -17, 0, tbz_cond, AArch64Nop,
++          ATMOSPHERE_TARGET_FIRMWARE_4_0_0, ATMOSPHERE_TARGET_FIRMWARE_16_1_0 },
++
++        /* nocntchk - current main pattern (17.0.0+) */
++        { MakePattern("0694....00..42..0091"),   -18, 0, tbz_cond, AArch64Nop,
++          ATMOSPHERE_TARGET_FIRMWARE_17_0_0, ATMOSPHERE_TARGET_FIRMWARE_MAX },
++
++        /* bl -> ret0 (signature / NACP checks) */
++        { MakePattern("40F9........081C00121F05"), 2, 0, bl_cond, AArch64Mov0,
++          ATMOSPHERE_TARGET_FIRMWARE_1_0_0, ATMOSPHERE_TARGET_FIRMWARE_18_1_0 },
++
++        /* noncasigchk - current main pattern (19.0.0+) */
++        { MakePattern("40F9............40B9091C"), 2, 0, bl_cond, AArch64Mov0,
++          ATMOSPHERE_TARGET_FIRMWARE_19_0_0, ATMOSPHERE_TARGET_FIRMWARE_MAX },
++    };
++
++    /* ===================================================================== */
++    /* 4. Pattern matching engine                                           */
++    /* ===================================================================== */
++
++    /* Try to find and apply one pattern inside the logical FS image */
++    ALWAYS_INLINE bool TryApplyNarrowPattern(const FsNarrowPattern &p, KPageGroup *pg, size_t image_size) {
++        for (size_t i = 0; i + p.byte_pattern.size <= image_size; ++i) {
++            /* Compare pattern with wildcard support */
++            size_t count = 0;
++            while (count < p.byte_pattern.size) {
++                const u16 pat = p.byte_pattern.data[count];
++                if (pat != REGEX_SKIP && pat != ReadPageGroupByte(pg, i + count)) {
++                    break;
++                }
++                ++count;
++            }
++
++            if (count != p.byte_pattern.size) {
++                continue;
++            }
++
++            /* Resolve the instruction position in signed space first. */
++            const ptrdiff_t inst_off = static_cast<ptrdiff_t>(i) + static_cast<ptrdiff_t>(p.inst_offset);
++            if (inst_off < 0 || inst_off + static_cast<ptrdiff_t>(sizeof(u32)) > static_cast<ptrdiff_t>(image_size)) {
++                continue;
++            }
++
++            const u32 inst = ReadPageGroupU32(pg, static_cast<size_t>(inst_off));
++            if (!p.cond || !p.cond(inst)) {
++                continue;
++            }
++
++            const ptrdiff_t patch_off = inst_off + static_cast<ptrdiff_t>(p.patch_offset);
++            if (patch_off < 0 || patch_off + static_cast<ptrdiff_t>(sizeof(u32)) > static_cast<ptrdiff_t>(image_size)) {
++                continue;
++            }
++
++            WritePageGroupU32(pg, static_cast<size_t>(patch_off), p.patch_value);
++            return true;
++        }
++
++        return false;
++    }
++
++    /* Scan the entire decompressed FS image as one logical byte stream */
++    void ApplyNarrowFsPatternPatches(KPageGroup *pg) {
++        const u32 current_fw = GetTargetFirmware();
++        const size_t image_size = GetPageGroupSize(pg);
++
++        for (const auto &pat : g_fs_narrow_patterns) {
++            if ((pat.min_fw_ver == 0 || current_fw >= pat.min_fw_ver) &&
++                (pat.max_fw_ver == UINT32_MAX || current_fw <= pat.max_fw_ver)) {
++                TryApplyNarrowPattern(pat, pg, image_size);
++            }
++        }
++    }
++
++    /* ===================================================================== */
++    /* 5. Main entry point (called from kern_initial_process.cpp)            */
++    /* ===================================================================== */
++    NOINLINE void ApplyFsPatches(u64            program_id,
++                                           KVirtualAddress /*kip_start*/,
++                                           size_t          /*binary_size*/,
++                                           KPageGroup     *process_pg)
++    {
++        /* Fast filter - only patch FS */
++        if (program_id != FsProgramId) {
++            return;
++        }
++
++        /* Optional: support for old-style offset-based patches */
++        // for (size_t i = 0; i < patch_set->num_patches; ++i) {
++        //     ApplySingleFsPatch(patch_set->patches[i], process_pg);
++        // }
++
++        /* Apply all version-appropriate pattern patches */
++        ApplyNarrowFsPatternPatches(process_pg);
++    }
++
++} /* namespace ams::kern */
+diff --git a/libraries/libmesosphere/source/kern_initial_process.cpp b/libraries/libmesosphere/source/kern_initial_process.cpp
+index 3f692ea9a..5e5afbd54 100644
+--- a/libraries/libmesosphere/source/kern_initial_process.cpp
++++ b/libraries/libmesosphere/source/kern_initial_process.cpp
+@@ -15,6 +15,9 @@
+  */
+ #include <mesosphere.hpp>
+ 
++/* FS patches. */
++#include <mesosphere/kern_k_embedded_fs_patches.hpp>
++
+ namespace ams::kern {
+ 
+     namespace {
+@@ -156,6 +159,7 @@ namespace ams::kern {
+ 
+                     /* Load the process. */
+                     reader.Load(pg, data);
++                    ApplyFsPatches(params.program_id, current, reader.GetBinarySize(), process_pg);
+ 
+                     /* If necessary, close/release the aligned part of the data we just loaded. */
+                     if (const size_t aligned_bin_size = util::AlignDown(binary_size, PageSize); aligned_bin_size != 0 && src_pool != dst_pool) {
+diff --git a/libraries/libstratosphere/source/erpt/srv/erpt_srv_report.cpp b/libraries/libstratosphere/source/erpt/srv/erpt_srv_report.cpp
+index ceec506b7..d1ae97ad1 100644
+--- a/libraries/libstratosphere/source/erpt/srv/erpt_srv_report.cpp
++++ b/libraries/libstratosphere/source/erpt/srv/erpt_srv_report.cpp
+@@ -20,10 +20,11 @@
+ namespace ams::erpt::srv {
+ 
+     ReportFileName Report::FileName(ReportId report_id, bool redirect_to_sd) {
++        (void)redirect_to_sd;
+         ReportFileName report_name;
+         util::SNPrintf(report_name.name, sizeof(report_name.name),
+                       "%s:/%08x-%04x-%04x-%02x%02x-%04x%08x",
+-                      (redirect_to_sd ? ReportOnSdStoragePath : ReportStoragePath),
++                      ReportStoragePath,
+                       report_id.uuid_data.time_low,
+                       report_id.uuid_data.time_mid,
+                       report_id.uuid_data.time_high_and_version,
+@@ -54,23 +55,24 @@ namespace ams::erpt::srv {
+ 
+     Result Report::Open(ReportOpenType type) {
+         switch (type) {
+-            case ReportOpenType_Create: R_RETURN(this->OpenStream(this->FileName().name, StreamMode_Write, ReportStreamBufferSize));
+-            case ReportOpenType_Read:   R_RETURN(this->OpenStream(this->FileName().name, StreamMode_Read,  ReportStreamBufferSize));
++            case ReportOpenType_Create: R_SUCCEED();
++            case ReportOpenType_Read:   R_SUCCEED();
+             default:                    R_THROW(erpt::ResultInvalidArgument());
+         }
+     }
+ 
+     Result Report::Read(u32 *out_read_count, u8 *dst, u32 dst_size) {
+-        R_RETURN(this->ReadStream(out_read_count, dst, dst_size));
++        (void)out_read_count;
++        (void)dst;
++        (void)dst_size;
++        R_SUCCEED();
+     }
+ 
+     Result Report::Delete() {
+-        R_RETURN(this->DeleteStream(this->FileName().name));
++        R_SUCCEED();
+     }
+ 
+-    void Report::Close() {
+-        return this->CloseStream();
+-    }
++    void Report::Close(){};
+ 
+     Result Report::GetFlags(ReportFlagSet *out) const {
+         *out = m_record->m_info.flags;
+@@ -78,15 +80,12 @@ namespace ams::erpt::srv {
+     }
+ 
+     Result Report::SetFlags(ReportFlagSet flags) {
+-        if (((~m_record->m_info.flags) & flags).IsAnySet()) {
+-            m_record->m_info.flags |= flags;
+-            R_RETURN(Journal::Commit());
+-        }
++        (void)flags;
+         R_SUCCEED();
+     }
+ 
+     Result Report::GetSize(s64 *out) const {
+-        R_RETURN(this->GetStreamSize(out));
++       *out = 0; R_SUCCEED();
+     }
+ 
+ }
+diff --git a/libraries/libstratosphere/source/erpt/srv/erpt_srv_report.hpp b/libraries/libstratosphere/source/erpt/srv/erpt_srv_report.hpp
+index c231439c3..e0b998289 100644
+--- a/libraries/libstratosphere/source/erpt/srv/erpt_srv_report.hpp
++++ b/libraries/libstratosphere/source/erpt/srv/erpt_srv_report.hpp
+@@ -51,12 +51,15 @@ namespace ams::erpt::srv {
+ 
+             template<typename T>
+             Result Write(T val) {
+-                R_RETURN(this->WriteStream(reinterpret_cast<const u8 *>(std::addressof(val)), sizeof(val)));
++                (void)val;
++                R_SUCCEED();
+             }
+ 
+             template<typename T>
+             Result Write(const T *buf, u32 buffer_size) {
+-                R_RETURN(this->WriteStream(reinterpret_cast<const u8 *>(buf), buffer_size));
++                (void)buf;
++                (void)buffer_size;
++                R_SUCCEED();
+             }
+     };
+ 
+diff --git a/stratosphere/ams_mitm/source/dns_mitm/dnsmitm_host_redirection.cpp b/stratosphere/ams_mitm/source/dns_mitm/dnsmitm_host_redirection.cpp
+index ea6f1eb09..657630171 100644
+--- a/stratosphere/ams_mitm/source/dns_mitm/dnsmitm_host_redirection.cpp
++++ b/stratosphere/ams_mitm/source/dns_mitm/dnsmitm_host_redirection.cpp
+@@ -64,6 +64,9 @@ namespace ams::mitm::socket::resolver {
+             return 1;
+         }
+ 
++        constexpr const char HardcodedRedirections[] =
++            "127.0.0.1 *nintendo*\n";
++
+         constexpr const char DefaultHostsFile[] =
+             "# Nintendo telemetry servers\n"
+             "127.0.0.1 receive-%.dg.srv.nintendo.net receive-%.er.srv.nintendo.net\n";
+@@ -334,6 +337,12 @@ namespace ams::mitm::socket::resolver {
+             ::fsFileClose(std::addressof(default_file));
+         }
+ 
++        /* NEW: Always apply hardcoded redirections first (lowest priority,
++        will be overridden by anything added after due to emplace_front in AddRedirection),
++        this will force all of *nintendo* to be redirected to 127.0.0 without potential missing dns.mitm config files. */
++        Log(log_file, "Adding hardcoded redirections.\n");
++        ParseHostsFile(HardcodedRedirections);
++
+         /* If we should, add the defaults. */
+         if (add_defaults) {
+             Log(log_file, "Adding defaults to redirection list.\n");
+diff --git a/stratosphere/ams_mitm/source/set_mitm/settings_sd_kvs.cpp b/stratosphere/ams_mitm/source/set_mitm/settings_sd_kvs.cpp
+index bdb25a8e0..b5dd4bb73 100644
+--- a/stratosphere/ams_mitm/source/set_mitm/settings_sd_kvs.cpp
++++ b/stratosphere/ams_mitm/source/set_mitm/settings_sd_kvs.cpp
+@@ -307,6 +307,12 @@ namespace ams::settings::fwdbg {
+         }
+ 
+         void LoadDefaultCustomSettings() {
++            /* Disable OLSC (online save cloud sync) communication.
++            * Prevents "Please wait" hang when launching games with Wi-Fi on
++            * and a linked account that has save cloud issues. */
++            R_ABORT_UNLESS(ParseSettingsItemValue("olsc", "default_auto_download_global_setting", "u8!0x0"));
++            R_ABORT_UNLESS(ParseSettingsItemValue("olsc", "default_auto_upload_global_setting",   "u8!0x0"));
++
+             /* Disable uploading error reports to Nintendo. */
+             R_ABORT_UNLESS(ParseSettingsItemValue("eupld", "upload_enabled", "u8!0x0"));
+ 
+diff --git a/stratosphere/loader/source/ldr_development_manager.cpp b/stratosphere/loader/source/ldr_development_manager.cpp
+index e49ac72e2..58067d52c 100644
+--- a/stratosphere/loader/source/ldr_development_manager.cpp
++++ b/stratosphere/loader/source/ldr_development_manager.cpp
+@@ -23,7 +23,7 @@ namespace ams::ldr {
+         bool g_development_for_acid_production_check = false;
+         bool g_development_for_anti_downgrade_check  = false;
+         bool g_development_for_acid_signature_check  = false;
+-        bool g_enabled_program_verification          = true;
++        bool g_enabled_program_verification          = false;
+ 
+     }
+ 
+diff --git a/stratosphere/loader/source/ldr_embedded_am_patches.inc b/stratosphere/loader/source/ldr_embedded_am_patches.inc
+deleted file mode 100644
+index 74de114e4..000000000
+--- a/stratosphere/loader/source/ldr_embedded_am_patches.inc
++++ /dev/null
+@@ -1,24 +0,0 @@
+-/*
+- * Copyright (c) Atmosphère-NX
+- *
+- * This program is free software; you can redistribute it and/or modify it
+- * under the terms and conditions of the GNU General Public License,
+- * version 2, as published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+- * more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+- */
+-
+-/* Patch teardown function call to NOP. */
+-constexpr inline const EmbeddedPatchEntry AmDisableTeardownPatches_22_0_0[] = {
+-    { 0x5CC4C, "\x1F\x20\x03\xD5", 4 },
+-};
+-
+-constexpr inline const EmbeddedPatch AmDisableTeardownPatches[] = {
+-    { ParseModuleId("B337F7C5AD53E55F3D920FCD394B4DE7C3B7D606"), util::size(AmDisableTeardownPatches_22_0_0), AmDisableTeardownPatches_22_0_0 }, /* 22.0.0 */
+-};
+diff --git a/stratosphere/loader/source/ldr_embedded_patches.hpp b/stratosphere/loader/source/ldr_embedded_patches.hpp
+new file mode 100644
+index 000000000..bf053ca9b
+--- /dev/null
++++ b/stratosphere/loader/source/ldr_embedded_patches.hpp
+@@ -0,0 +1,290 @@
++#pragma once
++
++#include <stratosphere.hpp>
++
++namespace ams::ldr::exefs {
++
++    constexpr u16 PatternWildcard = 0x100;
++
++    enum class ModuleType : u8 {
++        Any,
++        Rtld,
++        Main,
++        Sdk,
++        Subsdk,
++        BrowserDll,
++    };
++
++    struct PatternData {
++        u16 data[64]{};
++        u8 size{};
++
++        consteval PatternData(const char *s) {
++            if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
++                s += 2;
++            }
++
++            while (*s != '\0' && size < util::size(data)) {
++                if (s[0] == '.' && s[1] == '.') {
++                    data[size++] = PatternWildcard;
++                    s += 2;
++                } else {
++                    auto high = ParseNibble(*(s++));
++                    auto low = ParseNibble(*(s++));
++                    data[size++] = static_cast<u16>((high << 4) | low);
++                }
++            }
++        }
++
++    private:
++        static consteval u8 ParseNibble(char c) {
++            AMS_ASSUME(('0' <= c && c <= '9') || ('A' <= c && c <= 'F') || ('a' <= c && c <= 'f'));
++            if ('0' <= c && c <= '9') {
++                return c - '0';
++            } else if ('A' <= c && c <= 'F') {
++                return c - 'A' + 0xA;
++            } else {
++                return c - 'a' + 0xA;
++            }
++        }
++    };
++
++    struct PatchData {
++        u8 data[20]{};
++        u8 size{};
++
++        consteval PatchData(const char *s) {
++            if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
++                s += 2;
++            }
++
++            while (*s != '\0' && size < util::size(data)) {
++                auto high = ParseNibble(*(s++));
++                auto low = ParseNibble(*(s++));
++                data[size++] = static_cast<u8>((high << 4) | low);
++            }
++        }
++
++        bool IsApplied(const u8 *mapped) const {
++            return std::memcmp(data, mapped, size) == 0;
++        }
++
++    private:
++        static consteval u8 ParseNibble(char c) {
++            AMS_ASSUME(('0' <= c && c <= '9') || ('A' <= c && c <= 'F') || ('a' <= c && c <= 'f'));
++            if ('0' <= c && c <= '9') {
++                return c - '0';
++            } else if ('A' <= c && c <= 'F') {
++                return c - 'A' + 0xA;
++            } else {
++                return c - 'a' + 0xA;
++            }
++        }
++    };
++
++    struct PatternPatch {
++        const char *name;
++        PatternData pattern;
++        s32 instruction_offset;
++        s32 patch_offset;
++        bool (*condition)(u32 instruction);
++        PatchData (*patch)(u32 instruction);
++        bool (*applied)(const u8 *mapped, u32 instruction);
++        u32 match_index;
++        hos::Version min_version;
++        hos::Version max_version;
++    };
++
++    struct PatchTarget {
++        ncm::ProgramId program_id;
++        ModuleType module_type;
++        bool match_module_id;
++        ro::ModuleId module_id;
++        const PatternPatch *patterns;
++        size_t num_patterns;
++        bool requires_usb30_force_enabled;
++        hos::Version min_version;
++        hos::Version max_version;
++    };
++
++    constexpr bool strb_cond(u32 instruction) {
++        return (instruction >> 24) == 0x39;
++    }
++
++    constexpr bool sub_cond(u32 instruction) {
++        return (instruction >> 24) == 0xD1;
++    }
++
++    constexpr bool bl_cond(u32 instruction) {
++        const auto type = instruction >> 24;
++        return type == 0x25 || type == 0x94 || type == 0x97;
++    }
++
++    constexpr bool tbz_cond(u32 instruction) {
++        return ((instruction >> 24) & 0x7F) == 0x36;
++    }
++
++    constexpr bool adr_cond(u32 instruction) {
++        return (instruction >> 24) == 0x10;
++    }
++
++    constexpr bool es_cond(u32 instruction) {
++        const auto type = instruction >> 24;
++        return type == 0xD1 || type == 0xA9 || type == 0xAA || type == 0x2A || type == 0x92;
++    }
++
++    constexpr bool ctest_cond(u32 instruction) {
++        const auto type = instruction >> 24;
++        return type == 0xF9 || type == 0xA9 || type == 0xF8;
++    }
++
++    constexpr bool block_fw_updates_cond(u32 instruction) {
++        const auto type = instruction >> 24;
++        return type == 0xA8 || type == 0xA9 || type == 0xF8 || type == 0xF9;
++    }
++
++    constexpr PatchData mov0_ret_patch_data{"0xE0031F2AC0035FD6"};
++    constexpr PatchData nop_patch_data{"0x1F2003D5"};
++    constexpr PatchData strb_wzr_x19_patch_data{"0x7F020039"};
++    constexpr PatchData mov_w0_1_patch_data{"20008052"};
++    constexpr PatchData mov_w0_1_ret_patch_data{"0x20008052C0035FD6"};
++    constexpr PatchData ret0_patch_data{"0xE0031F2A"};
++    constexpr PatchData mov0_patch_data{"0xE0031FAA"};
++    constexpr PatchData mov2_patch_data{"0xE2031FAA"};
++    constexpr PatchData ctest_patch_data{"0x00309AD2001EA1F2610100D4E0031FAAC0035FD6"};
++
++    inline PatchData nop_patch(u32) {
++        return nop_patch_data;
++    }
++
++    inline PatchData strb_wzr_x19_patch(u32) {
++        return strb_wzr_x19_patch_data;
++    }
++
++    inline PatchData mov_w0_1_ret_patch(u32) {
++        return mov_w0_1_ret_patch_data;
++    }
++
++    inline PatchData mov_w0_1_patch(u32) {
++        return mov_w0_1_patch_data;
++    }
++
++    inline PatchData ret0_patch(u32) {
++        return ret0_patch_data;
++    }
++
++    inline PatchData mov0_ret_patch(u32) {
++        return mov0_ret_patch_data;
++    }
++
++    inline PatchData mov0_patch(u32) {
++        return mov0_patch_data;
++    }
++
++    inline PatchData mov2_patch(u32) {
++        return mov2_patch_data;
++    }
++
++    inline PatchData ctest_patch(u32) {
++        return ctest_patch_data;
++    }
++
++    inline bool nop_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return nop_patch_data.IsApplied(mapped);
++    }
++
++    inline bool strb_wzr_x19_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return strb_wzr_x19_patch_data.IsApplied(mapped);
++    }
++
++    inline bool mov_w0_1_ret_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return mov_w0_1_ret_patch_data.IsApplied(mapped);
++    }
++
++    inline bool mov_w0_1_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return mov_w0_1_patch_data.IsApplied(mapped);
++    }
++
++    inline bool ret0_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return ret0_patch_data.IsApplied(mapped);
++    }
++
++    inline bool mov0_ret_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return mov0_ret_patch_data.IsApplied(mapped);
++    }
++
++    inline bool mov0_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return mov0_patch_data.IsApplied(mapped);
++    }
++
++    inline bool mov2_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return mov2_patch_data.IsApplied(mapped);
++    }
++
++    inline bool ctest_applied(const u8 *mapped, u32 instruction) {
++        AMS_UNUSED(instruction);
++        return ctest_patch_data.IsApplied(mapped);
++    }
++
++
++    /* name, pattern, instruction_offset, patch_offset, condition, patch, applied, match_index, min_version, max_version */
++
++    /* TODO: Remove this if/when a cleaner solution is implemented by hbmenu/libnx. */
++    constexpr inline PatternPatch AmPatterns[] = {
++        { "am_homebrew_fix_1", PatternData{"0x682646391F0500716100005460420691794DFF97"}, 16, 0, bl_cond, nop_patch, nop_applied, 0, hos::Version_22_0_0, hos::Version_Max },
++    };
++
++    constexpr inline PatternPatch NsPatterns[] = {
++        { "force_compatability_type_out_value_region_to_global_1", PatternData{"0x35E8134039F4031F..68020039"}, 9, 0, strb_cond, strb_wzr_x19_patch, strb_wzr_x19_applied, 1, hos::Version_9_0_0, hos::Version_Max },
++    };
++
++    constexpr inline PatternPatch UsbPatterns[] = {
++        { "usb_patch_1", PatternData{"0x019408000012A92B8A52"}, -2, 0, bl_cond, mov_w0_1_patch, mov_w0_1_applied, 0, hos::Version_9_0_0, hos::Version_10_0_0 },
++        { "usb_patch_2", PatternData{"0xFFC300D1FD7B02A9FD83009188"}, 0, 0, sub_cond, mov_w0_1_ret_patch, mov_w0_1_ret_applied, 0, hos::Version_11_0_0, hos::Version_Max },
++        { "usb_patch_3", PatternData{"0xFFC300D1FD7B02A9FD83009188"}, 0, 0, sub_cond, mov_w0_1_ret_patch, mov_w0_1_ret_applied, 1, hos::Version_11_0_0, hos::Version_Max },
++    };
++
++    constexpr inline PatternPatch EsPatterns[] = {
++        { "es_1.0.0-8.1.1",     PatternData{"0x0091....0094..7E4092"},                 10, 0, es_cond, mov0_patch, mov0_applied, 0, hos::Version_1_0_0,  hos::Version_8_1_1  },
++        { "es_9.0.0-11.0.1",    PatternData{"0x00..........A0....D1....FF97"},        14, 0, es_cond, mov0_patch, mov0_applied, 0, hos::Version_9_0_0,  hos::Version_11_0_1 },
++        { "es_12.0.0-18.1.0",   PatternData{"0x02........D2..52....0091"},            32, 0, es_cond, mov0_patch, mov0_applied, 0, hos::Version_12_0_0, hos::Version_18_1_0 },
++        { "es_19.0.0-21.2.0",   PatternData{"0xA1........031F2A....0091"},            32, 0, es_cond, mov0_patch, mov0_applied, 0, hos::Version_19_0_0, hos::Version_21_2_0 },
++        { "es_22.0.0+",         PatternData{"0xA0630091....FE97A08300D1....FE97"},    16, 0, es_cond, mov0_patch, mov0_applied, 0, hos::Version_22_0_0, hos::Version_Max    },
++    };
++
++    constexpr inline PatternPatch NifmPatterns[] = {
++        { "ctest_1.0.0-19.0.1", PatternData{"0x03..AAE003..AA......39....04F8........E0"}, -29, 0, ctest_cond, ctest_patch, ctest_applied, 0, hos::Version_1_0_0,  hos::Version_19_0_1 },
++        { "ctest_20.0.0+",      PatternData{"0x03..AA......AA..................0314AA....14AA"}, -17, 0, ctest_cond, ctest_patch, ctest_applied, 0, hos::Version_20_0_0, hos::Version_Max    },
++    };
++
++    constexpr inline PatternPatch NimPatterns[] = {
++        { "blankcal0crashfix_17.0.0+",    PatternData{"0x00351F2003D5..............................97....0094....00..........61"}, 6,   0, adr_cond,        mov2_patch,     mov2_applied,     0, hos::Version_17_0_0, hos::Version_Max    },
++        { "blockfirmwareupdates_1.0.0-5.1.0", PatternData{"0x1139F3"},                                                       -30, 0, block_fw_updates_cond, mov0_ret_patch, mov0_ret_applied, 0, hos::Version_1_0_0,  hos::Version_5_1_0  },
++        { "blockfirmwareupdates_6.0.0-6.2.0", PatternData{"0xF30301AA..4E"},                                                 -40, 0, block_fw_updates_cond, mov0_ret_patch, mov0_ret_applied, 0, hos::Version_6_0_0,  hos::Version_6_2_0  },
++        { "blockfirmwareupdates_7.0.0-10.2.0", PatternData{"0xF30301AA014C"},                                                -36, 0, block_fw_updates_cond, mov0_ret_patch, mov0_ret_applied, 0, hos::Version_7_0_0,  hos::Version_10_2_0 },
++        { "blockfirmwareupdates_11.0.0-11.0.1", PatternData{"0x9AF0....................C0035FD6"},                           16,  0, block_fw_updates_cond, mov0_ret_patch, mov0_ret_applied, 0, hos::Version_11_0_0, hos::Version_11_0_1 },
++        { "blockfirmwareupdates_12.0.0+", PatternData{"0x41....4C............C0035FD6"},                                     14,  0, block_fw_updates_cond, mov0_ret_patch, mov0_ret_applied, 0, hos::Version_12_0_0, hos::Version_Max    },
++    };
++
++    constexpr inline PatchTarget PatchTargets[] = {
++        /* program_id, module_type, match_module_id, module_id, patterns, num_patterns, requires_usb30_force_enabled, min_version, max_version */
++        { ncm::SystemProgramId::Am,   ModuleType::Main, false, {}, AmPatterns,   util::size(AmPatterns),   false, hos::Version_22_0_0, hos::Version_Max },
++        { ncm::SystemProgramId::Ns,   ModuleType::Main, false, {}, NsPatterns,   util::size(NsPatterns),   false, hos::Version_9_0_0,  hos::Version_Max },
++        { ncm::SystemProgramId::Usb,  ModuleType::Main, false, {}, UsbPatterns,  util::size(UsbPatterns),  true,  hos::Version_9_0_0,  hos::Version_Max },
++        { ncm::SystemProgramId::Es,   ModuleType::Main, false, {}, EsPatterns,   util::size(EsPatterns),   false, hos::Version_2_0_0,  hos::Version_Max },
++        { ncm::SystemProgramId::Nifm, ModuleType::Main, false, {}, NifmPatterns, util::size(NifmPatterns), false, hos::Version_Min,    hos::Version_Max },
++        { ncm::SystemProgramId::Nim,  ModuleType::Main, false, {}, NimPatterns,  util::size(NimPatterns),  false, hos::Version_Min,    hos::Version_Max },
++    };
++
++    constexpr std::span<const PatchTarget> GetPatchTargets() {
++        return std::span<const PatchTarget>(PatchTargets, util::size(PatchTargets));
++    }
++}
+diff --git a/stratosphere/loader/source/ldr_embedded_usb_patches.inc b/stratosphere/loader/source/ldr_embedded_usb_patches.inc
+deleted file mode 100644
+index 0ac5bc23c..000000000
+--- a/stratosphere/loader/source/ldr_embedded_usb_patches.inc
++++ /dev/null
+@@ -1,105 +0,0 @@
+-/*
+- * Copyright (c) Atmosphère-NX
+- *
+- * This program is free software; you can redistribute it and/or modify it
+- * under the terms and conditions of the GNU General Public License,
+- * version 2, as published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope it will be useful, but WITHOUT
+- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+- * more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+- */
+-
+-/* Patch fallback case to mov w0, #1 rather than retrieving settings flag. */
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_9_0_0[] = {
+-    { 0x521C, "\x20\x00\x80\x52", 4 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_10_0_0[] = {
+-    { 0x5494, "\x20\x00\x80\x52", 4 },
+-};
+-
+-/* Patch getter functions to return 1. */
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_11_0_0[] = {
+-    { 0x85DC, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x866C, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_12_0_0[] = {
+-    { 0x840C, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x849C, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_13_0_0[] = {
+-    { 0x8424, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x84B4, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_14_0_0[] = {
+-    { 0x7414, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x74A4, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_15_0_0[] = {
+-    { 0x7230, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x72AC, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_16_0_0[] = {
+-    { 0x718C, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x7208, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_17_0_0[] = {
+-    { 0x7170, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x71EC, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_18_0_0[] = {
+-    { 0x6DCC, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x6E48, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_19_0_0[] = {
+-    { 0x6D90, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x6E10, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_20_0_0[] = {
+-    { 0x7010, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x7090, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_21_0_0[] = {
+-    { 0x6D60, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x6DE0, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatchEntry Usb30ForceEnablePatches_22_0_0[] = {
+-    { 0x6C90, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-    { 0x6D10, "\x20\x00\x80\x52\xC0\x03\x5F\xD6", 8 },
+-};
+-
+-constexpr inline const EmbeddedPatch Usb30ForceEnablePatches[] = {
+-    { ParseModuleId("C0D3F4E87E8B0FE9BBE9F1968A20767F3DC08E03"), util::size(Usb30ForceEnablePatches_9_0_0),  Usb30ForceEnablePatches_9_0_0 },
+-    { ParseModuleId("B9C700CA8335F8BAA0D2041D8D09F772890BA988"), util::size(Usb30ForceEnablePatches_10_0_0), Usb30ForceEnablePatches_10_0_0 },
+-    { ParseModuleId("95BAF06A69650C215A5DD50CF8BD2A603E7AD3C2"), util::size(Usb30ForceEnablePatches_11_0_0), Usb30ForceEnablePatches_11_0_0 },
+-    { ParseModuleId("F3F88D90EF6B3B6358EDEBAF87D56FA88D3A081C"), util::size(Usb30ForceEnablePatches_12_0_0), Usb30ForceEnablePatches_12_0_0 }, /* 12.0.0 - 12.0.3 */
+-    { ParseModuleId("A109046278AA99353C20EC38B57C495B74A06D91"), util::size(Usb30ForceEnablePatches_12_0_0), Usb30ForceEnablePatches_12_0_0 }, /* 12.1.0 */
+-    { ParseModuleId("69384BF4A543C62C4342C94E5E2CED3C5A675251"), util::size(Usb30ForceEnablePatches_13_0_0), Usb30ForceEnablePatches_13_0_0 }, /* 13.0.0 - 13.1.0 */
+-    { ParseModuleId("1C97AFF30D48AFFEB74B28A530D30ABA0ABB9FFF"), util::size(Usb30ForceEnablePatches_14_0_0), Usb30ForceEnablePatches_14_0_0 }, /* 14.0.0 */
+-    { ParseModuleId("30B15A83E94D91750E7470795414AD1AE9C6A8DB"), util::size(Usb30ForceEnablePatches_15_0_0), Usb30ForceEnablePatches_15_0_0 }, /* 15.0.0 */
+-    { ParseModuleId("225865A442B4B66E8BD14B3E9450B901BDF29A40"), util::size(Usb30ForceEnablePatches_16_0_0), Usb30ForceEnablePatches_16_0_0 }, /* 16.0.0 */
+-    { ParseModuleId("70D4C2ABCD049F16B301186924367F813DA70248"), util::size(Usb30ForceEnablePatches_17_0_0), Usb30ForceEnablePatches_17_0_0 }, /* 17.0.0 */
+-    { ParseModuleId("4F21AE15E814FA46515C0401BB23D4F7ADCBF3F4"), util::size(Usb30ForceEnablePatches_18_0_0), Usb30ForceEnablePatches_18_0_0 }, /* 18.0.0 */
+-    { ParseModuleId("54BB9BB32C958E02752DC5E4AE8D016BFE1F5418"), util::size(Usb30ForceEnablePatches_19_0_0), Usb30ForceEnablePatches_19_0_0 }, /* 19.0.0 */
+-    { ParseModuleId("40E80E7442C0DFC985315E6F9E8C77229818AC0F"), util::size(Usb30ForceEnablePatches_20_0_0), Usb30ForceEnablePatches_20_0_0 }, /* 20.0.0 */
+-    { ParseModuleId("A5EF8D22EDF8A384E4135270ED596C1D2D524159"), util::size(Usb30ForceEnablePatches_20_0_0), Usb30ForceEnablePatches_20_0_0 }, /* 20.1.0 - 20.5.0 */
+-    { ParseModuleId("766D0C2277207B40AD9B8DE309396D50CCE94885"), util::size(Usb30ForceEnablePatches_21_0_0), Usb30ForceEnablePatches_21_0_0 }, /* 21.0.0 */
+-    { ParseModuleId("B734339F2280170AF0200573F9B943242CEF8C15"), util::size(Usb30ForceEnablePatches_22_0_0), Usb30ForceEnablePatches_22_0_0 }, /* 22.0.0 - 22.1.0 */
+-    { ParseModuleId("AD8D36F2029822A4C498F055ADBDAA789EB913C6"), util::size(Usb30ForceEnablePatches_22_0_0), Usb30ForceEnablePatches_22_0_0 }, /* 22.5.0 */
+-};
+diff --git a/stratosphere/loader/source/ldr_meta.cpp b/stratosphere/loader/source/ldr_meta.cpp
+index d6b6d7852..84d13a729 100644
+--- a/stratosphere/loader/source/ldr_meta.cpp
++++ b/stratosphere/loader/source/ldr_meta.cpp
+@@ -146,7 +146,7 @@ namespace ams::ldr {
+ 
+         Result ValidateAcidSignature(Meta *meta, ncm::ContentMetaPlatform platform, bool unk_unused) {
+             /* Loader did not check signatures prior to 10.0.0. */
+-            if (hos::GetVersion() < hos::Version_10_0_0) {
++            {
+                 meta->check_verification_data = false;
+                 R_SUCCEED();
+             }
+diff --git a/stratosphere/loader/source/ldr_patcher.cpp b/stratosphere/loader/source/ldr_patcher.cpp
+index c78b3919b..03e7dcb9a 100644
+--- a/stratosphere/loader/source/ldr_patcher.cpp
++++ b/stratosphere/loader/source/ldr_patcher.cpp
+@@ -14,6 +14,7 @@
+  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  */
+ #include <stratosphere.hpp>
++#include "ldr_embedded_patches.hpp"
+ #include "ldr_patcher.hpp"
+ 
+ namespace ams::ldr {
+@@ -66,50 +67,120 @@ namespace ams::ldr {
+             return g_force_enable_usb30;
+         }
+ 
+-        consteval u8 ParseNybble(char c) {
+-            AMS_ASSUME(('0' <= c && c <= '9') || ('A' <= c && c <= 'F') || ('a' <= c && c <= 'f'));
+-            if ('0' <= c && c <= '9') {
+-                return c - '0' + 0x0;
+-            } else if ('A' <= c && c <= 'F') {
+-                return c - 'A' + 0xA;
+-            } else /* if ('a' <= c && c <= 'f') */ {
+-                return c - 'a' + 0xa;
++        exefs::ModuleType ToExefsModuleType(PatchModuleType module_type) {
++            switch (module_type) {
++                case PatchModuleType::Any:
++                    return exefs::ModuleType::Any;
++                case PatchModuleType::Rtld:
++                    return exefs::ModuleType::Rtld;
++                case PatchModuleType::Main:
++                    return exefs::ModuleType::Main;
++                case PatchModuleType::Sdk:
++                    return exefs::ModuleType::Sdk;
++                case PatchModuleType::Subsdk:
++                    return exefs::ModuleType::Subsdk;
++                case PatchModuleType::BrowserDll:
++                    return exefs::ModuleType::BrowserDll;
++                AMS_UNREACHABLE_DEFAULT_CASE();
+             }
+         }
+ 
+-        consteval ro::ModuleId ParseModuleId(const char *str) {
+-            /* Parse a static module id. */
+-            ro::ModuleId module_id = {};
++        bool IsVersionInRange(hos::Version version, hos::Version min_version, hos::Version max_version) {
++            return min_version <= version && version <= max_version;
++        }
++
++        bool MatchesModuleType(exefs::ModuleType expected, exefs::ModuleType actual) {
++            return expected == exefs::ModuleType::Any || expected == actual;
++        }
++
++        bool TryApplyPatternPatch(const exefs::PatternPatch &patch, uintptr_t mapped_nso, size_t mapped_size) {
++            const auto version = hos::GetVersion();
++            if (!IsVersionInRange(version, patch.min_version, patch.max_version)) {
++                return false;
++            }
+ 
+-            size_t ofs = 0;
+-            while (str[0] != 0) {
+-                AMS_ASSUME(ofs < sizeof(module_id));
+-                AMS_ASSUME(str[1] != 0);
++            u8 *mapped = reinterpret_cast<u8 *>(mapped_nso);
++            u32 match_count = 0;
++            for (size_t i = 0; i + patch.pattern.size <= mapped_size; ++i) {
++                size_t matched = 0;
++                while (matched < patch.pattern.size) {
++                    const auto expected = patch.pattern.data[matched];
++                    if (expected != exefs::PatternWildcard && expected != mapped[i + matched]) {
++                        break;
++                    }
++                    ++matched;
++                }
++
++                if (matched != patch.pattern.size) {
++                    continue;
++                }
++                if (match_count++ != patch.match_index) {
++                    continue;
++                }
+ 
+-                module_id.data[ofs] = (ParseNybble(str[0]) << 4) | (ParseNybble(str[1]) << 0);
++                const ptrdiff_t instruction_offset = static_cast<ptrdiff_t>(i) + static_cast<ptrdiff_t>(patch.instruction_offset);
++                if (instruction_offset < 0 || instruction_offset + static_cast<ptrdiff_t>(sizeof(u32)) > static_cast<ptrdiff_t>(mapped_size)) {
++                    continue;
++                }
+ 
+-                str += 2;
+-                ofs++;
++                u32 instruction = 0;
++                std::memcpy(std::addressof(instruction), mapped + instruction_offset, sizeof(instruction));
++                if (!patch.condition(instruction)) {
++                    continue;
++                }
++
++                const ptrdiff_t write_offset = instruction_offset + static_cast<ptrdiff_t>(patch.patch_offset);
++                if (write_offset < 0 || write_offset > static_cast<ptrdiff_t>(mapped_size)) {
++                    continue;
++                }
++
++                const auto patch_data = patch.patch(instruction);
++                if (write_offset + patch_data.size > static_cast<ptrdiff_t>(mapped_size)) {
++                    continue;
++                }
++
++                u8 *write_ptr = mapped + write_offset;
++                if (patch.applied(write_ptr, instruction)) {
++                    return true;
++                }
++
++                std::memcpy(write_ptr, patch_data.data, patch_data.size);
++                return true;
+             }
+ 
+-            return module_id;
++            return false;
+         }
+ 
+-        struct EmbeddedPatchEntry {
+-            uintptr_t offset;
+-            const void * const data;
+-            size_t size;
+-        };
++    }
+ 
+-        struct EmbeddedPatch {
+-            ro::ModuleId module_id;
+-            size_t num_entries;
+-            const EmbeddedPatchEntry *entries;
+-        };
++    void ApplyProgramPatchesToModule(ncm::ProgramId program_id, PatchModuleType module_type, const u8 *module_id_data, uintptr_t mapped_nso, size_t mapped_size) {
++        ro::ModuleId module_id{};
++        std::memcpy(std::addressof(module_id.data), module_id_data, sizeof(module_id.data));
+ 
+-        #include "ldr_embedded_usb_patches.inc"
+-        #include "ldr_embedded_am_patches.inc"
++        const auto exefs_module_type = ToExefsModuleType(module_type);
++        const auto version           = hos::GetVersion();
+ 
++        for (const auto &target : exefs::GetPatchTargets()) {
++            if (target.program_id != program_id) {
++                continue;
++            }
++            if (!MatchesModuleType(target.module_type, exefs_module_type)) {
++                continue;
++            }
++            if (!IsVersionInRange(version, target.min_version, target.max_version)) {
++                continue;
++            }
++            if (target.requires_usb30_force_enabled && !IsUsb30ForceEnabled()) {
++                continue;
++            }
++            if (target.match_module_id && std::memcmp(std::addressof(target.module_id), std::addressof(module_id), sizeof(module_id)) != 0) {
++                continue;
++            }
++
++            for (size_t i = 0; i < target.num_patterns; ++i) {
++                static_cast<void>(TryApplyPatternPatch(target.patterns[i], mapped_nso, mapped_size));
++            }
++        }
+     }
+ 
+     /* Apply IPS patches. */
+@@ -122,37 +193,4 @@ namespace ams::ldr {
+         std::memcpy(std::addressof(module_id.data), module_id_data, sizeof(module_id.data));
+         ams::patcher::LocateAndApplyIpsPatchesToModule(LoaderSdMountName, NsoPatchesDirectory, NsoPatchesProtectedSize, NsoPatchesProtectedOffset, std::addressof(module_id), reinterpret_cast<u8 *>(mapped_nso), mapped_size);
+     }
+-
+-    /* Apply embedded patches. */
+-    void ApplyEmbeddedPatchesToModule(const u8 *module_id_data, uintptr_t mapped_nso, size_t mapped_size) {
+-        /* Make module id. */
+-        ro::ModuleId module_id;
+-        std::memcpy(std::addressof(module_id.data), module_id_data, sizeof(module_id.data));
+-
+-        if (IsUsb30ForceEnabled()) {
+-            for (const auto &patch : Usb30ForceEnablePatches) {
+-                if (std::memcmp(std::addressof(patch.module_id), std::addressof(module_id), sizeof(module_id)) == 0) {
+-                    for (size_t i = 0; i < patch.num_entries; ++i) {
+-                        const auto &entry = patch.entries[i];
+-                        if (entry.offset + entry.size <= mapped_size) {
+-                            std::memcpy(reinterpret_cast<void *>(mapped_nso + entry.offset), entry.data, entry.size);
+-                        }
+-                    }
+-                }
+-            }
+-        }
+-        
+-        /* TODO: Remove this if/when a cleaner solution is implemented by hbmenu/libnx. */
+-        for (const auto &patch : AmDisableTeardownPatches) {
+-            if (std::memcmp(std::addressof(patch.module_id), std::addressof(module_id), sizeof(module_id)) == 0) {
+-                for (size_t i = 0; i < patch.num_entries; ++i) {
+-                    const auto &entry = patch.entries[i];
+-                    if (entry.offset + entry.size <= mapped_size) {
+-                        std::memcpy(reinterpret_cast<void *>(mapped_nso + entry.offset), entry.data, entry.size);
+-                    }
+-                }
+-            }
+-        }
+-    }
+-
+-}
+\ No newline at end of file
++}
+diff --git a/stratosphere/loader/source/ldr_patcher.hpp b/stratosphere/loader/source/ldr_patcher.hpp
+index 9aa372168..16c5e439b 100644
+--- a/stratosphere/loader/source/ldr_patcher.hpp
++++ b/stratosphere/loader/source/ldr_patcher.hpp
+@@ -18,10 +18,19 @@
+ 
+ namespace ams::ldr {
+ 
++    enum class PatchModuleType : u8 {
++        Any,
++        Rtld,
++        Main,
++        Sdk,
++        Subsdk,
++        BrowserDll,
++    };
++
++    /* Apply loader-native, title-aware pattern patches. */
++    void ApplyProgramPatchesToModule(ncm::ProgramId program_id, PatchModuleType module_type, const u8 *module_id_data, uintptr_t mapped_nso, size_t mapped_size);
++
+     /* Apply IPS patches. */
+     void LocateAndApplyIpsPatchesToModule(const u8 *module_id_data, uintptr_t mapped_nso, size_t mapped_size);
+ 
+-    /* Apply embedded patches. */
+-    void ApplyEmbeddedPatchesToModule(const u8 *module_id_data, uintptr_t mapped_nso, size_t mapped_size);
+-
+-}
+\ No newline at end of file
++}
+diff --git a/stratosphere/loader/source/ldr_process_creation.cpp b/stratosphere/loader/source/ldr_process_creation.cpp
+index bea773f44..828bc5d01 100644
+--- a/stratosphere/loader/source/ldr_process_creation.cpp
++++ b/stratosphere/loader/source/ldr_process_creation.cpp
+@@ -90,6 +90,40 @@ namespace ams::ldr {
+             return NsoPaths[idx];
+         }
+ 
++        PatchModuleType GetPatchModuleType(NsoIndex idx) {
++            switch (idx) {
++                case Nso_Rtld:
++                    return PatchModuleType::Rtld;
++                case Nso_Main:
++                    return PatchModuleType::Main;
++                case Nso_Sdk:
++                    return PatchModuleType::Sdk;
++                case Nso_SubSdk0:
++                case Nso_SubSdk1:
++                case Nso_SubSdk2:
++                case Nso_SubSdk3:
++                case Nso_SubSdk4:
++                case Nso_SubSdk5:
++                case Nso_SubSdk6:
++                case Nso_SubSdk7:
++                case Nso_SubSdk8:
++                case Nso_SubSdk9:
++                    return PatchModuleType::Subsdk;
++                case Nso_Wkc0:
++                case Nso_Wkc1:
++                case Nso_Wkc2:
++                case Nso_Wkc3:
++                case Nso_Wkc4:
++                case Nso_Wkc5:
++                case Nso_Wkc6:
++                case Nso_Wkc7:
++                case Nso_Wkc8:
++                case Nso_Wkc9:
++                    return PatchModuleType::BrowserDll;
++                AMS_UNREACHABLE_DEFAULT_CASE();
++            }
++        }
++
+         struct ProcessInfo {
+             os::NativeHandle process_handle;
+             uintptr_t code_address;
+@@ -683,7 +717,7 @@ namespace ams::ldr {
+             R_SUCCEED();
+         }
+ 
+-        Result LoadAutoLoadModule(os::NativeHandle process_handle, fs::FileHandle file, const NsoHeader *nso_header, uintptr_t nso_address, size_t nso_size, size_t map_size) {
++        Result LoadAutoLoadModule(os::NativeHandle process_handle, fs::FileHandle file, ncm::ProgramId program_id, PatchModuleType module_type, const NsoHeader *nso_header, uintptr_t nso_address, size_t nso_size, size_t map_size) {
+             const bool is_zbic = (nso_header->flags & NsoHeader::Flag_UseZbicCompression) != 0;
+ 
+             /* Map and read data from file. */
+@@ -717,8 +751,8 @@ namespace ams::ldr {
+                 R_TRY(CheckSegmentHash(nso_header, map_address, NsoHeader::Segment_Ro));
+                 R_TRY(CheckSegmentHash(nso_header, map_address, NsoHeader::Segment_Rw));
+ 
+-                /* Apply embedded patches. */
+-                ApplyEmbeddedPatchesToModule(nso_header->module_id, map_address, nso_size);
++                /* Apply loader-native pattern patches before legacy APIs. */
++                ApplyProgramPatchesToModule(program_id, module_type, nso_header->module_id, map_address, nso_size);
+ 
+                 /* Apply IPS patches. */
+                 LocateAndApplyIpsPatchesToModule(nso_header->module_id, map_address, nso_size);
+@@ -742,7 +776,7 @@ namespace ams::ldr {
+             R_SUCCEED();
+         }
+ 
+-        Result LoadAutoLoadModules(const ProcessInfo *process_info, const AutoLoadModuleContext &ctx, const ArgumentStore::Entry *argument) {
++        Result LoadAutoLoadModules(const ProcessInfo *process_info, const AutoLoadModuleContext &ctx, ncm::ProgramId program_id, const ArgumentStore::Entry *argument) {
+             /* Load each NSO. */
+             const uintptr_t total_end = process_info->code_address + process_info->total_size;
+ 
+@@ -757,7 +791,7 @@ namespace ams::ldr {
+                 R_TRY(fs::OpenFile(std::addressof(file), GetNsoPath(nso_idx), fs::OpenMode_Read));
+                 ON_SCOPE_EXIT { fs::CloseFile(file); };
+ 
+-                R_TRY(LoadAutoLoadModule(process_info->process_handle, file, ctx.headers + i,
++                R_TRY(LoadAutoLoadModule(process_info->process_handle, file, program_id, GetPatchModuleType(nso_idx), ctx.headers + i,
+                       process_info->nso_address[i], process_info->nso_size[i], map_size));
+             }
+ 
+@@ -802,7 +836,7 @@ namespace ams::ldr {
+             ON_RESULT_FAILURE { svc::CloseHandle(process_handle); };
+ 
+             /* Load all auto load modules. */
+-            R_RETURN(LoadAutoLoadModules(out, ctx, argument));
++            R_RETURN(LoadAutoLoadModules(out, ctx, meta->aci->program_id, argument));
+         }
+ 
+     }
+-- 
+2.52.0.windows.1
+
