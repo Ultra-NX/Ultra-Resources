@@ -1,58 +1,17 @@
-From 06b4d643f60263a4c585412f325ca47fa59112ff Mon Sep 17 00:00:00 2001
+From df798c31618ae0fd9d251ba5010a59ae05acb622 Mon Sep 17 00:00:00 2001
 From: redraz <redrazlive@gmail.com>
-Date: Mon, 7 Sep 2026 07:41:15 +0300
-Subject: [PATCH] Loader patches
+Date: Tue, 15 Sep 2026 23:41:34 +0300
+Subject: [PATCH] Loader Patch
 
 ---
- .../loader/source/ldr_process_creation.cpp    | 98 +++++++++++++------
- 1 file changed, 69 insertions(+), 29 deletions(-)
+ .../loader/source/ldr_process_creation.cpp    | 56 ++++++++++---------
+ 1 file changed, 31 insertions(+), 25 deletions(-)
 
 diff --git a/Source/Atmosphere/stratosphere/loader/source/ldr_process_creation.cpp b/Source/Atmosphere/stratosphere/loader/source/ldr_process_creation.cpp
-index de998557..ab7e747d 100644
+index de998557..bce8e8a6 100644
 --- a/Source/Atmosphere/stratosphere/loader/source/ldr_process_creation.cpp
 +++ b/Source/Atmosphere/stratosphere/loader/source/ldr_process_creation.cpp
-@@ -91,6 +91,40 @@ namespace ams::ldr {
-             return NsoPaths[idx];
-         }
- 
-+        PatchModuleType GetPatchModuleType(NsoIndex idx) {
-+            switch (idx) {
-+                case Nso_Rtld:
-+                    return PatchModuleType::Rtld;
-+                case Nso_Main:
-+                    return PatchModuleType::Main;
-+                case Nso_Sdk:
-+                    return PatchModuleType::Sdk;
-+                case Nso_SubSdk0:
-+                case Nso_SubSdk1:
-+                case Nso_SubSdk2:
-+                case Nso_SubSdk3:
-+                case Nso_SubSdk4:
-+                case Nso_SubSdk5:
-+                case Nso_SubSdk6:
-+                case Nso_SubSdk7:
-+                case Nso_SubSdk8:
-+                case Nso_SubSdk9:
-+                    return PatchModuleType::Subsdk;
-+                case Nso_Wkc0:
-+                case Nso_Wkc1:
-+                case Nso_Wkc2:
-+                case Nso_Wkc3:
-+                case Nso_Wkc4:
-+                case Nso_Wkc5:
-+                case Nso_Wkc6:
-+                case Nso_Wkc7:
-+                case Nso_Wkc8:
-+                case Nso_Wkc9:
-+                    return PatchModuleType::BrowserDll;
-+                AMS_UNREACHABLE_DEFAULT_CASE();
-+            }
-+        }
-+
-         struct ProcessInfo {
-             os::NativeHandle process_handle;
-             uintptr_t code_address;
-@@ -126,8 +160,7 @@ namespace ams::ldr {
+@@ -126,8 +126,7 @@ namespace ams::ldr {
          bool g_is_ptm;
  
          /* Global Zstd decompression context. */
@@ -62,7 +21,7 @@ index de998557..ab7e747d 100644
  
          Result ValidateProgramVersion(ncm::ProgramId program_id, u32 version) {
              /* No version verification is done before 8.1.0. */
-@@ -225,7 +258,7 @@ namespace ams::ldr {
+@@ -225,7 +224,7 @@ namespace ams::ldr {
                      /* Read NSO header. */
                      size_t read_size;
                      R_TRY(fs::ReadFile(std::addressof(read_size), file, 0, g_nso_headers + ctx.nso_count, sizeof(NsoHeader)));
@@ -71,7 +30,7 @@ index de998557..ab7e747d 100644
  
                      /* Note nso is present. */
                      switch (i) {
-@@ -264,7 +297,7 @@ namespace ams::ldr {
+@@ -264,7 +263,7 @@ namespace ams::ldr {
  
          Result CheckAutoLoad(const AutoLoadModuleContext &ctx, u32 acid_flags) {
              /* We must always have a main. */
@@ -80,7 +39,7 @@ index de998557..ab7e747d 100644
  
              /* Validate flags and extents for all present NSOs. */
              for (int i = 0; i < ctx.nso_count; ++i) {
-@@ -272,11 +305,11 @@ namespace ams::ldr {
+@@ -272,11 +271,11 @@ namespace ams::ldr {
  
                  /* All NSOs must not be --X. */
                  /* This is "probably" not checked on Ounce? */
@@ -94,7 +53,7 @@ index de998557..ab7e747d 100644
                  }
  
                  /* NSOs must have page-aligned segments. */
-@@ -299,13 +332,13 @@ namespace ams::ldr {
+@@ -299,13 +298,13 @@ namespace ams::ldr {
              const bool has_browser_dll = (acid_flags & Acid::AcidFlag_LoadBrowserCoreDll) != 0;
              if (ctx.ali.has_rtld || ctx.ali.has_sdk) {
                  /* If we have sdk we must have rtld. */
@@ -111,7 +70,7 @@ index de998557..ab7e747d 100644
              }
  
              R_SUCCEED();
-@@ -394,6 +427,8 @@ namespace ams::ldr {
+@@ -394,6 +393,8 @@ namespace ams::ldr {
  
                  /* If the signature check fails, we need to check if this is allowable. */
                  if (!is_signature_valid) {
@@ -120,7 +79,7 @@ index de998557..ab7e747d 100644
                      /* We have to enforce signature checks on prod and when we have a signature to check on dev. */
                      R_UNLESS(IsDevelopmentForAcidProductionCheck(), ldr::ResultInvalidNcaSignature());
                      R_UNLESS(!code_verification_data.has_data,      ldr::ResultInvalidNcaSignature());
-@@ -649,10 +684,13 @@ namespace ams::ldr {
+@@ -649,10 +650,13 @@ namespace ams::ldr {
              R_SUCCEED();
          }
  
@@ -135,7 +94,7 @@ index de998557..ab7e747d 100644
              /* Validate size. */
              R_UNLESS(file_size <= segment_size,                       ldr::ResultInvalidNso());
              R_UNLESS(file_size    <= std::numeric_limits<s32>::max(), ldr::ResultInvalidNso());
-@@ -662,19 +700,19 @@ namespace ams::ldr {
+@@ -662,19 +666,19 @@ namespace ams::ldr {
              uintptr_t load_address = is_compressed ? map_end - compressed_size : map_base;
              size_t read_size;
              R_TRY(fs::ReadFile(std::addressof(read_size), file, file_offset, reinterpret_cast<void *>(load_address), file_size));
@@ -160,7 +119,7 @@ index de998557..ab7e747d 100644
              }
  
              R_SUCCEED();
-@@ -689,12 +727,12 @@ namespace ams::ldr {
+@@ -689,12 +693,12 @@ namespace ams::ldr {
              crypto::GenerateSha256(hash, sizeof(hash),
                  reinterpret_cast<void *>(map_address + nso_header->segments[segment].dst_offset),
                  nso_header->segments[segment].size);
@@ -169,14 +128,13 @@ index de998557..ab7e747d 100644
              R_SUCCEED();
          }
  
--        Result LoadAutoLoadModule(os::NativeHandle process_handle, fs::FileHandle file, const NsoHeader *nso_header, uintptr_t nso_address, size_t nso_size, size_t map_size) {
+         Result LoadAutoLoadModule(os::NativeHandle process_handle, fs::FileHandle file, const NsoHeader *nso_header, uintptr_t nso_address, size_t nso_size, size_t map_size) {
 -            const bool is_zstd = (nso_header->flags & NsoHeader::Flag_UseZbicCompression) != 0;
-+        Result LoadAutoLoadModule(os::NativeHandle process_handle, fs::FileHandle file, ncm::ProgramId program_id, PatchModuleType module_type, const NsoHeader *nso_header, uintptr_t nso_address, size_t nso_size, size_t map_size) {
 +            const bool is_zbic = (nso_header->flags & NsoHeader::Flag_UseZbicCompression) != 0;
  
              const size_t module_size = static_cast<size_t>(nso_header->rw_dst_offset) + util::AlignUp(nso_header->rw_size + nso_header->bss_size, os::MemoryPageSize);
              const size_t arena_size  = (nso_size > module_size) ? (nso_size - module_size) : 0;
-@@ -711,11 +749,11 @@ namespace ams::ldr {
+@@ -711,11 +715,11 @@ namespace ams::ldr {
  
                  /* Load NSO segments. */
                  R_TRY(LoadAutoLoadModuleSegment(file, nso_header->segments[NsoHeader::Segment_Text].file_offset, nso_header->text_compressed_size, nso_header->text_size,
@@ -191,25 +149,16 @@ index de998557..ab7e747d 100644
  
                  /* Clear unused space to zero. */
                  const size_t text_end = static_cast<size_t>(nso_header->text_dst_offset) + static_cast<size_t>(nso_header->text_size);
-@@ -730,8 +768,8 @@ namespace ams::ldr {
-                 R_TRY(CheckSegmentHash(nso_header, map_address, NsoHeader::Segment_Ro));
-                 R_TRY(CheckSegmentHash(nso_header, map_address, NsoHeader::Segment_Rw));
- 
--                /* Apply embedded patches. */
--                ApplyEmbeddedPatchesToModule(nso_header->module_id, map_address, nso_size);
-+                /* Apply loader-native pattern patches before legacy APIs. */
-+                ApplyProgramPatchesToModule(program_id, module_type, nso_header->module_id, map_address, nso_size);
- 
-                 /* Apply IPS patches. */
-                 LocateAndApplyIpsPatchesToModule(nso_header->module_id, map_address, nso_size);
-@@ -772,21 +810,23 @@ namespace ams::ldr {
-             R_SUCCEED();
-         }
- 
--        Result LoadAutoLoadModules(const ProcessInfo *process_info, const AutoLoadModuleContext &ctx, const ArgumentStore::Entry *argument) {
-+        Result LoadAutoLoadModules(const ProcessInfo *process_info, const AutoLoadModuleContext &ctx, ncm::ProgramId program_id, const ArgumentStore::Entry *argument) {
-             /* Load each NSO. */
-             const uintptr_t total_end = process_info->code_address + process_info->total_size;
+@@ -757,7 +761,7 @@ namespace ams::ldr {
+             /* Set permissions. */
+             const size_t text_size = util::AlignUp(nso_header->text_size, os::MemoryPageSize);
+             const size_t ro_size   = util::AlignUp(nso_header->ro_size, os::MemoryPageSize);
+-            const size_t rw_size   = util::AlignUp(nso_header->rw_size + nso_header->bss_size, os::MemoryPageSize) + arena_size;
++            const size_t rw_size   = util::AlignUp(nso_header->rw_size + nso_header->bss_size, os::MemoryPageSize);
+             if (text_size) {
+                 const bool prevent_code_reads = (nso_header->flags & NsoHeader::Flag_PreventCodeReads);
+                 R_TRY(os::SetProcessMemoryPermission(process_handle, nso_address + nso_header->text_dst_offset, text_size, prevent_code_reads ? os::MemoryPermission_ExecuteOnly : os::MemoryPermission_ReadExecute));
+@@ -778,15 +782,17 @@ namespace ams::ldr {
  
              for (int i = 0; i < ctx.nso_count; i++) {
                  const NsoIndex nso_idx = static_cast<NsoIndex>(ctx.ali.nso_indices[i]);
@@ -226,20 +175,11 @@ index de998557..ab7e747d 100644
 -                const size_t map_size = is_zstd ? (total_end - process_info->nso_address[i]) : process_info->nso_size[i];
 -
 -                R_TRY(LoadAutoLoadModule(process_info->process_handle, file, ctx.headers + i, process_info->nso_address[i], process_info->nso_size[i], map_size));
-+                R_TRY(LoadAutoLoadModule(process_info->process_handle, file, program_id, GetPatchModuleType(nso_idx), ctx.headers + i,
++                R_TRY(LoadAutoLoadModule(process_info->process_handle, file, ctx.headers + i,
 +                      process_info->nso_address[i], process_info->nso_size[i], map_size));
              }
  
              /* Load arguments, if present. */
-@@ -830,7 +870,7 @@ namespace ams::ldr {
-             ON_RESULT_FAILURE { svc::CloseHandle(process_handle); };
- 
-             /* Load all auto load modules. */
--            R_RETURN(LoadAutoLoadModules(out, ctx, argument));
-+            R_RETURN(LoadAutoLoadModules(out, ctx, meta->aci->program_id, argument));
-         }
- 
-     }
 -- 
 2.52.0.windows.1
 

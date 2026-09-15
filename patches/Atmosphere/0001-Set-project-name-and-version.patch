@@ -1,6 +1,6 @@
 From 10a4ed227874c1e34def364f3aa482d956e624d8 Mon Sep 17 00:00:00 2001
 From: redraz <redrazlive@gmail.com>
-Date: Sat, 10 May 2025 02:49:07 +0300
+Date: Sat, 15 May 2026 22:09:05 +0300
 Subject: [PATCH] Set project name and version
 
 ---
@@ -23,7 +23,7 @@ index e0ceb6a19..cbfceffa0 100644
                  char display_version[sizeof(g_ams_firmware_version.display_version)];
  
 -                util::SNPrintf(display_version, sizeof(display_version), "%s|AMS %u.%u.%u|%c", g_ams_firmware_version.display_version, api_info.GetMajorVersion(), api_info.GetMinorVersion(), api_info.GetMicroVersion(), emummc_char);
-+                util::SNPrintf(display_version, sizeof(display_version), "%s|Ultra 2.4|RC1|%c", g_ams_firmware_version.display_version, emummc_char);
++                util::SNPrintf(display_version, sizeof(display_version), "%s|Ultra 3.0|R4+|%c", g_ams_firmware_version.display_version, emummc_char);
  
                  std::memcpy(g_ams_firmware_version.display_version, display_version, sizeof(display_version));
              }
